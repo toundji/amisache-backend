@@ -1,0 +1,23 @@
+<p class="greeting">Bonjour {{firstName}},</p>
+
+<p class="text">
+    Nous avons reçu une demande de réinitialisation de votre mot de passe.
+    Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe.
+</p>
+
+<div style="text-align: center;">
+    <a href="{{resetUrl}}" class="btn">Réinitialiser mon mot de passe</a>
+</div>
+
+<p class="text" style="font-size: 13px; color: #9BA3AF;">
+    Ou copiez ce lien dans votre navigateur :<br/>
+    <a href="{{resetUrl}}" style="color: #2E86C1; word-break: break-all;">{{resetUrl}}</a>
+</p>
+
+<div class="warning-box">
+    <p>
+        ⚠️ Ce lien expire dans {{expiry}} heures.
+        Si vous n'avez pas demandé cette réinitialisation,
+        ignorez cet email — votre mot de passe reste inchangé.
+    </p>
+</div>

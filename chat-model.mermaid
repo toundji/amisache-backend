@@ -1,0 +1,124 @@
+classDiagram
+    direction LR
+
+    class Conversation {
+        +id
+        +subjectType
+        +subjectId
+        +status : ConversationStatus
+        +mode : ConversationMode
+        +lastMessageAt        «cache liste»
+        +lastMessagePreview   «cache liste»
+        +lastMessageSenderId  «cache liste»
+        +createdAt
+        +closedAt
+    }
+
+    class Participant {
+        +id
+        +conversationId
+        +actorId
+        +actorType : ActorType
+        +role : ParticipantRole
+        +joinedAt
+        +leftAt
+        +lastReadAt           «curseur non-lu»
+    }
+
+    class Message {
+        +id
+        +conversationId
+        +senderId
+        +senderType : ActorType
+        +kind : MessageKind
+        +body
+        +replyTo
+        +createdAt            «= emission»
+        +deliveredAt          «1-1 seulement»
+        +readAt               «1-1 seulement»
+        +failedAt
+    }
+
+    class MessageReceipt {
+        +messageId
+        +participantId
+        +deliveredAt
+        +readAt
+    }
+
+    class Attachment {
+        +id
+        +messageId
+        +kind : AttachmentKind
+        +url
+        +meta
+    }
+
+    class CallEvent {
+        +id
+        +messageId
+        +status : CallStatus
+        +duration
+    }
+
+    class ConversationStatus {
+        <<enumeration>>
+        OPEN
+        PENDING
+        RESOLVED
+        CLOSED
+    }
+    class ConversationMode {
+        <<enumeration>>
+        BOT
+        AGENT
+    }
+    class ActorType {
+        <<enumeration>>
+        HUMAN
+        AI
+        SYSTEM
+    }
+    class ParticipantRole {
+        <<enumeration>>
+        OWNER
+        MEMBER
+        ASSIGNED_AGENT
+        CLIENT
+        DRIVER
+    }
+    class MessageKind {
+        <<enumeration>>
+        TEXT
+        MEDIA
+        CALL
+        SYSTEM
+    }
+    class AttachmentKind {
+        <<enumeration>>
+        IMAGE
+        AUDIO
+        VIDEO
+        FILE
+    }
+    class CallStatus {
+        <<enumeration>>
+        INITIATED
+        ANSWERED
+        MISSED
+        ENDED
+    }
+
+    Conversation "1" --> "*" Participant : intervenants
+    Conversation "1" --> "*" Message : contient
+    Message "1" --> "*" Attachment : pieces jointes
+    Message "1" --> "0..1" CallEvent : appel
+    Message "0..1" --> "*" Message : replyTo
+    Message "1" --> "*" MessageReceipt : accuses (multi-participant)
+    Participant "1" --> "*" MessageReceipt : destinataire
+
+    note for Conversation "Ne porte AUCUNE identite d'acteur.\nToute l'appartenance vit dans Participant.\nProprietaire eventuel = Participant WHERE role = OWNER.\nsubjectType/subjectId = lien polymorphe vers l'entite metier (course, demande, commande), nullable si chat libre.\nlastMessage* = cache pour afficher la liste sans lire Message."
+
+    note for Participant "joinedAt/leftAt = intervalle d'appartenance ; destinataires actifs = leftAt IS NULL.\nHandoff BOT->AGENT : leftAt sur le bot + nouveau Participant agent.\n'Mes conversations' : JOIN participant WHERE actorId = moi AND leftAt IS NULL.\nlastReadAt = curseur ; non-lu = COUNT(message WHERE createdAt > lastReadAt AND senderId != moi)."
+
+    note for Message "Defaut 1-a-1 : deliveredAt/readAt sur Message.\nMulti-participant : les retirer, utiliser MessageReceipt (1 ligne / destinataire actif hors expediteur).\nStatut = derive des timestamps, jamais stocke. failedAt = echec d'envoi."

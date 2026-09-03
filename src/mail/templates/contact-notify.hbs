@@ -1,0 +1,17 @@
+<p class="greeting">Nouveau message de contact 📬</p>
+
+<p class="text">
+    Vous avez reçu un nouveau message via le formulaire de contact de <strong>{{appName}}</strong>.
+</p>
+
+<div class="otp-box" style="text-align: left; letter-spacing: normal;">
+    <p class="text" style="margin-bottom: 8px;"><strong>De :</strong> {{senderName}} ({{senderEmail}})</p>
+    {{#if subject}}
+    <p class="text" style="margin-bottom: 8px;"><strong>Sujet :</strong> {{subject}}</p>
+    {{/if}}
+    <p class="text" style="white-space: pre-line;">{{message}}</p>
+</div>
+
+<p class="text" style="font-size: 13px; color: #9BA3AF;">
+    Répondez directement à {{senderEmail}} pour contacter l'expéditeur.
+</p>

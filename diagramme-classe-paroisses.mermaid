@@ -1,0 +1,444 @@
+classDiagram
+    direction TB
+
+    %% =========================================================
+    %%  MODULE ADRESSE  (decoupage administratif -- reference)
+    %% =========================================================
+
+    class Country {
+        +uuid id
+        +string isoCode
+        +string callingCode
+        +List~string~ subdivisions
+        +List~string~ allSub
+    }
+
+    class Region {
+        +uuid id
+        +string name
+        +string parentSub
+        +uuid countryId
+        +Country country
+    }
+
+    class Zone {
+        +uuid id
+        +string name
+        +string parentSub
+        +uuid regionId
+        +Region region
+    }
+
+    class Village {
+        +uuid id
+        +string name
+        +VillageType type
+        +string parentSub
+        +uuid zoneId
+        +Zone zone
+    }
+
+    class Address {
+        <<value object>>
+        +string locality
+        +string landmark
+        +Point location
+        +uuid zoneId
+        +Zone zone
+        +uuid villageId
+        +Village village
+    }
+
+    %% =========================================================
+    %%  HIERARCHIE ECCLESIALE  (auto-referente = 1 seule table)
+    %% =========================================================
+
+    class Church {
+        +uuid id
+        +EntityType type
+        +string name
+        +string slug
+        +string leaderMessage
+        +string bannerPhoto
+        +string accentColor
+        +string defaultLanguage
+        +ValidationStatus status
+        +Polygon perimeter
+        +uuid parentId
+        +Church parent
+        +uuid countryId
+        +Country country
+    }
+
+    class Entrance {
+        +uuid id
+        +EntranceType type
+        +string name
+        +Point location
+        +uuid churchId
+        +Church church
+    }
+
+    %% =========================================================
+    %%  PERSONNES
+    %% =========================================================
+
+    class ClergyMember {
+        +uuid id
+        +EcclesialRole role
+        +date startDate
+        +date endDate
+        +uuid churchId
+        +Church church
+        +uuid userId
+        +User user
+    }
+
+    class Membership {
+        +uuid id
+        +date since
+        +uuid churchId
+        +Church church
+        +uuid userId
+        +User user
+    }
+
+    class User {
+        +uuid id
+        +string firstName
+        +string lastName
+        +string email
+        +string phone
+        +string password
+        +UserRole role
+        +UserStatus status
+        +uuid homeChurchId
+        +Church homeChurch
+    }
+
+    %% =========================================================
+    %%  VIE LITURGIQUE & DEMANDES
+    %% =========================================================
+
+    class Schedule {
+        +uuid id
+        +ScheduleFrequency frequency
+        +int dayOfWeek
+        +int weekOfMonth
+        +Time time
+        +int duration
+        +string language
+        +LiturgicalSeason season
+        +date startDate
+        +date endDate
+        +uuid churchId
+        +Church church
+        +uuid typeId
+        +Type type
+    }
+
+    class Request {
+        +uuid id
+        +date date
+        +string text
+        +decimal offering
+        +string attachments
+        +RequestStatus status
+        +uuid churchId
+        +Church church
+        +uuid userId
+        +User user
+        +uuid scheduleId
+        +Schedule schedule
+        +uuid typeId
+        +Type type
+        +uuid paymentId
+        +Payment payment
+    }
+
+    %% =========================================================
+    %%  DONS & PAIEMENTS
+    %% =========================================================
+
+    class Donation {
+        +uuid id
+        +decimal amount
+        +datetime date
+        +uuid churchId
+        +Church church
+        +uuid userId
+        +User user
+        +uuid typeId
+        +Type type
+        +uuid paymentId
+        +Payment payment
+    }
+
+    class PaymentMethod {
+        +uuid id
+        +PaymentOperator operator
+        +string phone
+        +string accountName
+        +bool active
+        +uuid churchId
+        +Church church
+    }
+
+    class Payment {
+        +uuid id
+        +decimal amount
+        +PaymentOperator operator
+        +string reference
+        +string receiptImage
+        +date paidAt
+        +PaymentStatus status
+        +datetime confirmedAt
+        +uuid paymentMethodId
+        +PaymentMethod paymentMethod
+        +uuid confirmedById
+        +ClergyMember confirmedBy
+    }
+
+    %% =========================================================
+    %%  COMMUNICATION & COMMUNAUTES
+    %% =========================================================
+
+    class Publication {
+        +uuid id
+        +string title
+        +string content
+        +datetime publishedAt
+        +PublicationStatus status
+        +date startDate
+        +date endDate
+        +uuid churchId
+        +Church church
+        +uuid groupId
+        +Group group
+        +uuid typeId
+        +Type type
+    }
+
+    class Media {
+        +uuid id
+        +MediaKind kind
+        +MediaProvider provider
+        +string url
+        +uuid publicationId
+        +Publication publication
+    }
+
+    class Group {
+        +uuid id
+        +string name
+        +GroupType type
+        +uuid churchId
+        +Church church
+    }
+
+    class GroupMember {
+        +uuid id
+        +uuid groupId
+        +Group group
+        +uuid userId
+        +User user
+    }
+
+    %% =========================================================
+    %%  TABLE DE TYPES MUTUALISEE
+    %% =========================================================
+
+    class Type {
+        +uuid id
+        +string name
+        +TypeScope scope
+        +bool active
+    }
+
+    %% =========================================================
+    %%  RELATIONS -- ADRESSE
+    %% =========================================================
+    Country "1" *-- "*" Region : contains
+    Region "1" *-- "*" Zone : contains
+    Zone "1" *-- "*" Village : contains (non-exhaustive)
+    Address "*" --> "1" Zone : anchor (required)
+    Address "*" --> "0..1" Village : village (if known)
+
+    %% =========================================================
+    %%  RELATIONS -- HIERARCHIE (auto-reference)
+    %% =========================================================
+    Church "0..1" o-- "*" Church : parent / children
+    Church "*" --> "0..1" Country : country (CONFERENCE level)
+    Church "1" *-- "1" Address
+    Church "1" *-- "*" Schedule : schedules
+    Church "1" *-- "*" Entrance : entrances
+
+    %% =========================================================
+    %%  RELATIONS -- CAPACITES PARTAGEES (tous niveaux)
+    %% =========================================================
+    Church "1" o-- "*" ClergyMember : staff
+    User "1" o-- "*" ClergyMember : memberships
+    Church "1" *-- "*" PaymentMethod : collection accounts
+    Church "1" o-- "*" Publication
+    Publication "*" --> "0..1" Group : author
+    Publication "1" *-- "*" Media : media
+    Church "1" o-- "*" Donation
+    Church "1" o-- "*" Group
+
+    %% =========================================================
+    %%  RELATIONS -- USAGES LITURGIQUES (via regles metier)
+    %% =========================================================
+    Church "1" o-- "*" Request
+    Request "*" --> "0..1" Schedule : mass
+
+    %% =========================================================
+    %%  RELATIONS -- TYPES MUTUALISES
+    %% =========================================================
+    Schedule "*" --> "1" Type : scope=SCHEDULE
+    Request "*" --> "1" Type : scope=INTENTION/SACRAMENT
+    Donation "*" --> "1" Type : scope=DONATION
+    Publication "*" --> "1" Type : scope=PUBLICATION
+
+    %% =========================================================
+    %%  RELATIONS -- UTILISATEUR
+    %% =========================================================
+    User "*" --> "0..1" Church : home
+    Church "1" o-- "*" Membership : members
+    User "1" o-- "*" Membership : parishes
+    User "1" --> "*" Request : submits
+    User "1" --> "*" Donation : gives
+    Group "1" o-- "*" GroupMember
+    User "1" o-- "*" GroupMember
+
+    %% =========================================================
+    %%  RELATIONS -- PAIEMENTS
+    %% =========================================================
+    Request "1" --> "0..1" Payment
+    Donation "1" --> "1" Payment
+    Payment "*" --> "1" PaymentMethod : paid to
+    Payment "*" --> "0..1" ClergyMember : confirmedBy
+
+    %% =========================================================
+    %%  ENUMERATIONS
+    %% =========================================================
+
+    class EntityType {
+        <<enumeration>>
+        CONFERENCE
+        ARCHDIOCESE
+        DIOCESE
+        DOYENNE
+        PAROISSE
+        COMMUNAUTE
+        CHURCH
+        CHAPEL
+    }
+    class VillageType {
+        <<enumeration>>
+        VILLAGE
+        NEIGHBORHOOD
+    }
+    class EntranceType {
+        <<enumeration>>
+        VEHICLE
+        PEDESTRIAN
+        MIXED
+        SERVICE
+    }
+    class ValidationStatus {
+        <<enumeration>>
+        PENDING
+        APPROVED
+        SUSPENDED
+    }
+    class EcclesialRole {
+        <<enumeration>>
+        ARCHBISHOP
+        BISHOP
+        PRIEST
+        VICAR
+        DEACON
+        CATECHIST
+        SECRETARY
+        ADMIN
+    }
+    class ScheduleFrequency {
+        <<enumeration>>
+        DAILY
+        WEEKLY
+        BIWEEKLY
+        MONTHLY
+        ONCE
+    }
+    class LiturgicalSeason {
+        <<enumeration>>
+        ORDINARY
+        LENT
+        ADVENT
+        PATRON_FEAST
+    }
+    class RequestStatus {
+        <<enumeration>>
+        SUBMITTED
+        IN_PROGRESS
+        CONFIRMED
+        COMPLETED
+        REJECTED
+    }
+    class PaymentStatus {
+        <<enumeration>>
+        SUBMITTED
+        CONFIRMED
+        REJECTED
+    }
+    class PaymentOperator {
+        <<enumeration>>
+        MTN_MOMO
+        MOOV_MONEY
+        BANK_CARD
+    }
+    class GroupType {
+        <<enumeration>>
+        CHOIR
+        MOVEMENT
+        ASSOCIATION
+        OTHER
+    }
+    class TypeScope {
+        <<enumeration>>
+        INTENTION
+        SACRAMENT
+        DONATION
+        PUBLICATION
+        SCHEDULE
+    }
+    class UserRole {
+        <<enumeration>>
+        USER
+        ADMIN
+    }
+    class UserStatus {
+        <<enumeration>>
+        ACTIVE
+        PENDING
+        BLOCKED
+    }
+    class PublicationStatus {
+        <<enumeration>>
+        DRAFT
+        PUBLISHED
+        ARCHIVED
+    }
+    class MediaKind {
+        <<enumeration>>
+        VIDEO
+        IMAGE
+        AUDIO
+    }
+    class MediaProvider {
+        <<enumeration>>
+        YOUTUBE
+        UPLOAD
+        FACEBOOK
+        OTHER
+    }

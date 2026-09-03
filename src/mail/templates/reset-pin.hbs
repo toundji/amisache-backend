@@ -1,0 +1,18 @@
+<p class="greeting">Bonjour {{firstName}},</p>
+
+<p class="text">
+    Nous avons reçu une demande de réinitialisation de votre code PIN.
+    Utilisez le code ci-dessous pour confirmer votre identité.
+</p>
+
+<div class="otp-box">
+    <div class="otp-code">{{otp}}</div>
+    <div class="otp-expiry">Ce code expire dans {{expiry}} minutes</div>
+</div>
+
+<div class="warning-box">
+    <p>
+        ⚠️ Ne communiquez jamais votre code PIN à qui que ce soit.
+        Si vous n'avez pas demandé cette réinitialisation, contactez notre support.
+    </p>
+</div>
