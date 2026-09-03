@@ -32,6 +32,12 @@ import { ChatModule } from './chat/chat.module';
 import { FileSystemStoredFile, NestjsFormDataModule } from 'nestjs-form-data';
 import { NotificationModule } from './notifications/notification.module';
 import { InAppChannel } from './notifications/channels/in-app.channel';
+import { TypeModule } from './type/type.module';
+import { AddressModule } from './address/address.module';
+import { ChurchModule } from './church/church.module';
+import { PaymentModule } from './payment/payment.module';
+import { LiturgyModule } from './liturgy/liturgy.module';
+import { CommunityModule } from './community/community.module';
 
 @Module({
   imports: [
@@ -110,6 +116,14 @@ import { InAppChannel } from './notifications/channels/in-app.channel';
     UsersModule,
     ContentModule,
     ChatModule,
+
+    // ── Modules Amisache — fondation (AMISACHE.md §9) ─────
+    TypeModule,
+    AddressModule,
+    ChurchModule,
+    PaymentModule,
+    LiturgyModule,
+    CommunityModule,
 
     // Notifications : module abstrait, channels enregistrés par le projet.
     // Défaut = in-app uniquement (persistance + GET /notifications). Pour

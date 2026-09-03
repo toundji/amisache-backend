@@ -14,6 +14,12 @@ import {
 import { Exclude, Expose } from 'class-transformer';
 import { Audit } from '../../shared/audit';
 import { UserStatus, UserRole } from '../../shared/common.enum';
+// ⚠️ Country (module address/) est aussi fondamental que shared/ — pas de
+// logique métier propre — d'où cette exception ponctuelle à la règle de
+// dépendance socle→métier. Voir AMISACHE.md §5 « Réconciliation de User ».
+// Church, à l'inverse, NE DOIT JAMAIS être importé ici (§7.2) : homeChurchId
+// reste un scalaire uuid nu, sans relation.
+import { Country } from '../../address/entities/country.entity';
 
 @Entity('users')
 export class User extends Audit {
@@ -33,6 +39,10 @@ export class User extends Audit {
 
   @Column({ nullable: true, name: 'image_profile' })
   profile?: string;
+
+  /** Indispensable au Bénin — lié au flux de paiement Mobile Money (AMISACHE.md §5) */
+  @Column({ nullable: true })
+  phone?: string;
 
   // ── Sécurité ─────────────────────────────────────────────
 
@@ -84,6 +94,19 @@ export class User extends Audit {
    */
   @Column({ nullable: true, name: 'id_country' })
   idCountry?: string;
+
+  @ManyToOne(() => Country, { nullable: true, eager: false })
+  @JoinColumn({ name: 'id_country', referencedColumnName: 'id' })
+  country?: Country;
+
+  /**
+   * Paroisse de référence — une des paroisses suivies (invariante
+   * `homeChurchId ∈ Membership(user)` validée côté service `church/`,
+   * jamais ici). AUCUNE relation `@ManyToOne` vers Church : users/ ne
+   * doit jamais importer church/ (AMISACHE.md §5, §7.2).
+   */
+  @Column({ nullable: true, name: 'home_church_id' })
+  homeChurchId?: string;
 
   // ── Computed ──────────────────────────────────────────────
 

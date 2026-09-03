@@ -58,5 +58,8 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# TypeScript incremental build cache
+*.tsbuildinfo
 
-src/database/migrations
+# Généré à chaque démarrage par utils/swagger-config.ts — voir main.ts
+swagger.json

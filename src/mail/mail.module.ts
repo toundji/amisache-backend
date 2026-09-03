@@ -21,6 +21,7 @@ import { MailController } from './mail.controller';
 
         // ── Mailer (SMTP + Handlebars) ────────────────────────
         MailerModule.forRootAsync({
+            imports: [],
             useFactory: () => ({
                 transport: {
                     host: process.env.MAIL_HOST,

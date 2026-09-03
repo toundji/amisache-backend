@@ -153,9 +153,17 @@ Conséquence TypeORM : **un embedded ne porte pas de relation `@ManyToOne`**. Do
 - **« La plus proche » relève de l'onboarding, pas du modèle** : à l'inscription, proposer par
   défaut la paroisse la plus proche (requête spatiale MySQL `ST_Distance` sur `Church.location`),
   que le fidèle confirme ou change. Le modèle ne stocke que le choix final.
-- **`UserRole` = `user` / `admin` / `engineer`** (bypass technique). Les valeurs héritées d'un
-  autre projet (`agent`, `investor`, `manager`) sont retirées. **Les rôles ecclésiaux ne passent
-  PAS par `UserRole`** — ils vivent dans `ClergyMember.role` (`EcclesialRole`).
+- **`UserRole` = `user` / `admin` / `engineer` (bypass technique) / `manager` (conservé du
+  socle) / `clergy`.** Les valeurs `agent`/`investor` héritées d'un autre projet sont
+  retirées ; `manager` est gardé (utilisé par la logique socle générique d'accès au client
+  API `manager` — `AuthService.assertClientAccess`). `clergy` est un **marqueur plateforme
+  grossier** — « ce compte appartient au clergé/personnel » — ajouté en remplacement de
+  `agent` pour ce même contrôle d'accès (`ApiClientType.manager` exige désormais
+  `UserRole.clergy`, plus `UserRole.agent`). **Il ne porte aucun détail de fonction ni
+  d'affectation par église : les rôles ecclésiaux précis (et l'historique par église) ne
+  passent PAS par `UserRole`** — ils vivent dans `ClergyMember.role` (`EcclesialRole`) +
+  `ClergyMember.churchId`. Ne jamais dériver une autorisation *par église* de
+  `UserRole.clergy` seul (risque de fuite cross-tenant — voir §10 « isolation multi-tenant »).
 - **`UserStatus` = celui du socle** (`active` / `unverified` / `disabled` / `blocked` /
   `deleted`). Le `PENDING` de l'esquisse Amisache correspond à `unverified`.
 

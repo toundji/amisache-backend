@@ -3,7 +3,7 @@
 // Stocke les emails qui ont échoué après toutes les tentatives BullMQ.
 // Permet de les inspecter et relancer manuellement via /mail/failed.
 // ============================================================
-import { Audit } from 'src/shared/audit';
+import { Audit } from '../../shared/audit';
 import { Entity, Column } from 'typeorm';
 import { MailJobType } from '../mail.types';
 

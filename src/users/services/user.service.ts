@@ -158,6 +158,20 @@ export class UserService {
     };
   }
 
+  /**
+   * Définit la paroisse de référence. AUCUNE validation ici de
+   * l'invariante `homeChurchId ∈ Membership(user)` — c'est la
+   * responsabilité de l'appelant (church/MembershipService), pour ne
+   * jamais faire dépendre users/ de church/ (AMISACHE.md §5, §7.2).
+   */
+  async updateHomeChurch(
+    userId: string,
+    homeChurchId: string,
+  ): Promise<{ success: boolean }> {
+    await this.userRepo.update(userId, { homeChurchId });
+    return { success: true };
+  }
+
   // ── Admin — mise à jour statut ────────────────────────────
 
   async updateStatus(

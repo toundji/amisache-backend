@@ -7,7 +7,8 @@
 // Génerer une clé : Firebase Console → Paramètres → Comptes de service
 // ============================================================
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as admin from 'firebase-admin';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getMessaging, Message } from 'firebase-admin/messaging';
 
 @Injectable()
 export class NotificationService implements OnModuleInit {
@@ -33,9 +34,9 @@ export class NotificationService implements OnModuleInit {
 
     try {
       // Éviter la double initialisation si le module est rechargé
-      if (admin.apps.length === 0) {
-        admin.initializeApp({
-          credential: admin.credential.cert(JSON.parse(sdk)),
+      if (getApps().length === 0) {
+        initializeApp({
+          credential: cert(JSON.parse(sdk)),
         });
       }
       this.initialized = true;
@@ -60,7 +61,7 @@ export class NotificationService implements OnModuleInit {
 
     const topics = [`user-${userId}`, 'global-notifications', ...extraTopics];
 
-    const messaging = admin.messaging();
+    const messaging = getMessaging();
 
     await Promise.allSettled(
       topics.map((topic) =>
@@ -80,7 +81,7 @@ export class NotificationService implements OnModuleInit {
     if (!this.initialized) return;
 
     const topics = [`user-${userId}`, 'global-notifications'];
-    const messaging = admin.messaging();
+    const messaging = getMessaging();
 
     await Promise.allSettled(
       topics.map((topic) =>
@@ -134,7 +135,7 @@ export class NotificationService implements OnModuleInit {
   private buildMessage(
     notification: FcmNotification,
     target: { topic?: string; token?: string },
-  ): admin.messaging.Message {
+  ): Message {
     return {
       ...target,
       notification: {
@@ -152,12 +153,11 @@ export class NotificationService implements OnModuleInit {
             fcmOptions: { link: notification.webLink },
           }
         : undefined,
-    } as admin.messaging.Message;
+    } as Message;
   }
 
-  private async sendMessage(message: admin.messaging.Message): Promise<void> {
-    await admin
-      .messaging()
+  private async sendMessage(message: Message): Promise<void> {
+    await getMessaging()
       .send(message)
       .catch((err) => {
         this.logger.error(`FCM send failed: ${err}`);

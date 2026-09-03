@@ -9,7 +9,7 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
-import * as admin from 'firebase-admin';
+import { getAuth, DecodedIdToken } from 'firebase-admin/auth';
 
 import { User } from '../../users/entities/user.entity';
 import { SessionService } from './session.service';
@@ -367,9 +367,9 @@ export class AuthService {
     // ré-instancie/recharge le module à l'exécution selon le bundler (webpack/ts-node),
     // ce qui a provoqué des erreurs d'initialisation en production. NotificationService
     // utilise déjà le SDK en import statique ; on aligne loginWithGoogle dessus.
-    let decoded: admin.auth.DecodedIdToken;
+    let decoded: DecodedIdToken;
     try {
-      decoded = await admin.auth().verifyIdToken(idToken);
+      decoded = await getAuth().verifyIdToken(idToken);
     } catch (err) {
       throw new ApiError('Invalid or expired Google token.', {
         code: HttpStatus.UNAUTHORIZED,
@@ -534,8 +534,8 @@ export class AuthService {
     }
 
     if (clientType === ApiClientType.manager) {
-      if (!user.roles?.includes(UserRole.agent)) {
-        throw new ApiError('Access denied. Agent access required.', {
+      if (!user.roles?.includes(UserRole.clergy)) {
+        throw new ApiError('Access denied. Clergy access required.', {
           code: HttpStatus.FORBIDDEN,
         });
       }

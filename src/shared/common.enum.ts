@@ -4,11 +4,17 @@
 
 export enum UserRole {
   user = 'user',
-  agent = 'agent',
-  investor = 'investor',
   manager = 'manager',
   admin = 'admin',
   engineer = 'engineer',
+  /**
+   * Marqueur plateforme grossier — « ce compte appartient au clergé/personnel ».
+   * Ne porte AUCUN détail de fonction ni d'affectation par église : ça vit dans
+   * `ClergyMember.role` (`EcclesialRole`) + `ClergyMember.churchId`, voir
+   * AMISACHE.md §5. `clergy` sert uniquement l'accès plateforme grossier
+   * (ex: client API `manager`, UI dédiée), jamais une autorisation par église.
+   */
+  clergy = 'clergy',
 }
 
 export enum UserStatus {

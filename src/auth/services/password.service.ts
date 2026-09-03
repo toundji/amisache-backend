@@ -30,7 +30,7 @@ import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 // ── Config Argon2id ───────────────────────────────────────────
 // memoryCost 64MB + timeCost 3 = ~300ms/tentative sur serveur moyen
 // Rend le bruteforce de 10K PINs = ~50 minutes par thread
-const ARGON2_OPTIONS: argon2.Options = {
+const ARGON2_OPTIONS: argon2.HashOptions = {
   type: argon2.argon2id,
   memoryCost: 65536, // 64MB
   timeCost: 3,
