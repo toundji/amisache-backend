@@ -42,3 +42,7 @@ export class UpdatePaymentStatusDto {
   })
   status!: PaymentStatus.CONFIRMED | PaymentStatus.REJECTED;
 }
+
+export interface ListPaymentQuery {
+  status?: PaymentStatus;
+}

@@ -37,12 +37,12 @@ Prochaines étapes ouvertes :
 - **Adaptation des modules socle gardés** (`AMISACHE.md` §6) : `chat/` (enums d'acteurs
   `ParticipantRole` DRIVER/CLIENT → FAITHFUL/CLERGY, en gardant OWNER/MEMBER) et `content/`
   (déjà vérifié compatible avec `community/`, aucun changement requis identifié).
-- **Dette explicitement notée** : pas encore de guard d'isolation multi-tenant par
-  affectation `ClergyMember` — plusieurs routes d'écriture (`Schedule`, `PaymentMethod`,
-  `Church`, `Group`, `Publication`...) sont limitées à `admin`/`engineer` en attendant ce
-  système, plutôt qu'ouvertes à `UserRole.clergy` (risque de fuite cross-paroisse). C'est
-  l'invariant prioritaire n°1 de la stratégie de tests (§10) — à construire avant toute
-  ouverture de ces routes au clergé lui-même.
+- **Dette : guard d'isolation multi-tenant** — l'autorisation par affectation `ClergyMember`
+  passe par `ClergyMemberService.assertAuthorizedForChurch`, appelée à la main dans chaque
+  service (routes d'écriture au clergé + désormais la paire de listes `admin`/`church/:churchId`
+  sur les 10 ressources — entrée du 2026-09-08). Il manque encore un **guard générique** qui
+  éviterait ces appels manuels et sécuriserait les futures routes par défaut. Invariant
+  prioritaire n°1 de la stratégie de tests (§10) — aucun test d'isolation encore écrit.
 - **Décisions sensibles en attente d'arbitrage ecclésial** (§8) : registres sacramentels,
   délivrance de certificats — ne pas implémenter sans décision explicite.
 - **Fonction « découverte de proximité »** (§4.11) — églises/messes proches par
@@ -56,6 +56,47 @@ Prochaines étapes ouvertes :
 
 > Format d'une entrée : `### AAAA-MM-JJ — Titre court` puis **Décision**, **Pourquoi**,
 > et si utile **Conséquences** (fichiers touchés, invariantes à tenir).
+
+### 2026-09-08 — Paire de listes complètes `admin` / `church/:churchId` sur les ressources rattachées à une église
+- **Décision** : pour chaque ressource métier rattachée à une `Church`, deux endpoints de
+  **liste complète non paginée** :
+  - `GET /<res>/admin` — tout, toutes églises — `@Roles(admin, engineer)` ;
+  - `GET /<res>/church/:churchId` — tout, **une seule** église — pas de `@Roles`,
+    l'autorisation vit dans le service : `ClergyMemberService.assertAuthorizedForChurch`
+    (bypass `admin`/`engineer`, sinon `ClergyMember` **actif** de *cette* église ; 403 sinon,
+    404 si l'église est inconnue).
+  Ressources couvertes (10) : `clergy-members`, `entrances`, `memberships`, `schedules`,
+  `requests`, `donations`, `payment-methods`, `payments`, `groups`, `publications`.
+  `payments` n'avait **aucune** liste avant — scoping église via `paymentMethod.churchId`
+  (QueryBuilder). `churches/admin` inchangé (une `Church` n'est pas *rattachée* à une église,
+  elle en **est** une ; liste paginée serveur, contrat différent).
+- **Pourquoi** : besoin produit — un compte du clergé doit voir **exactement** le périmètre
+  de sa paroisse, l'admin plateforme voit tout. Séparer en deux routes explicites (plutôt
+  qu'un `?churchId` adaptatif) rend l'autorisation lisible par route et s'aligne sur la
+  convention `/admin` déjà en place.
+- **Rapport avec la dette §10 / "isolation multi-tenant"** : ces routes de **lecture** sont
+  la première application concrète et systématique de `assertAuthorizedForChurch` comme
+  garde d'isolation par affectation `ClergyMember`. Les routes d'**écriture** ouvertes au
+  clergé (`Schedule`, `PaymentMethod`, `Group`, `Publication`…) l'utilisaient déjà dans leur
+  service ; la nouveauté est de l'étendre aux listes et de le faire porter par une paire
+  d'endpoints homogène sur tout le périmètre. Le guard générique dédié reste à faire (la
+  logique est centralisée dans `ClergyMemberService`, prête à être extraite).
+- **Conséquences** :
+  - Services : `listAdmin()` + `listForChurch(user, churchId, query?)` ajoutés sur les 10
+    services ; `ClergyMemberService` injecté là où il manquait (`EntranceService`,
+    `MembershipService`, `RequestService`, `DonationService`), `ChurchService` ajouté à
+    `PaymentService`. `MembershipService.listForChurch(churchId?)` (ancienne signature
+    admin) scindé en `listAdmin()` + `listForChurch(user, churchId)`.
+  - Contrôleurs : routes `church/:churchId` déclarées **avant** `:id`. Sur `requests`,
+    `donations`, `publications`, le `?churchId` de `/admin` est **conservé mais marqué
+    déprécié** (Swagger) pour ne pas casser le panel avant sa réécriture.
+  - DTO : `ListPaymentQuery { status? }` créé ; `ListPaymentMethodQuery.churchId` passé
+    optionnel (ignoré par `/admin` et `/church/:churchId`).
+  - **Pas de migration** (aucune entité touchée). Build + boot réel vérifiés : les 20 routes
+    (`Mapped {/<res>/admin|church/:churchId, GET}`) sont mappées.
+- **À suivre** : réécrire le panel Angular pour consommer `/<res>/church/:churchId` quand un
+  contexte église existe (et retirer le shim `?churchId` de `/admin`). Aucun test unitaire
+  d'isolation encore écrit sur ces listes — candidat direct de la stratégie §10.
 
 ### 2026-09-03 — Module `community/` — dernier module du périmètre initial
 - **Décision (frontière `content/`⇄`community/`)** : vérifiée par inspection directe —

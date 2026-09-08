@@ -9,8 +9,10 @@ import { Repository } from 'typeorm';
 
 import { Membership } from '../entities/membership.entity';
 import { ChurchService } from './church.service';
+import { ClergyMemberService } from './clergy-member.service';
 import { UserService } from '../../users/services/user.service';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 
 @Injectable()
 export class MembershipService {
@@ -18,6 +20,7 @@ export class MembershipService {
     @InjectRepository(Membership)
     private readonly membershipRepo: Repository<Membership>,
     private readonly churchService: ChurchService,
+    private readonly clergyMemberService: ClergyMemberService,
     private readonly userService: UserService,
   ) {}
 
@@ -29,11 +32,24 @@ export class MembershipService {
     });
   }
 
-  /** [Admin] Membres suivant une église donnée */
-  async listForChurch(churchId: string): Promise<Membership[]> {
+  /** [Admin] Liste complète des abonnements, toutes églises confondues. */
+  async listAdmin(): Promise<Membership[]> {
+    return this.membershipRepo.find({
+      relations: { user: true, church: true },
+      order: { since: 'DESC' },
+    });
+  }
+
+  /**
+   * Liste complète des abonnés d'UNE église — réservée au clergé ACTIF de
+   * cette église (ou admin/engineer). 404 si l'église est inconnue.
+   */
+  async listForChurch(user: JwtUserInfo, churchId: string): Promise<Membership[]> {
+    await this.churchService.getById(churchId);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
     return this.membershipRepo.find({
       where: { churchId },
-      relations: { user: true },
+      relations: { user: true, church: true },
       order: { since: 'DESC' },
     });
   }

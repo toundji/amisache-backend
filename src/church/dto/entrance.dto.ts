@@ -49,6 +49,6 @@ export class UpdateEntranceDto {
 }
 
 export interface ListEntranceQuery {
-  /** Obligatoire côté service — une entrée référence toujours son église */
-  churchId: string;
+  /** Optionnel : filtre par église. Absent → toutes les entrées (back-office). */
+  churchId?: string;
 }

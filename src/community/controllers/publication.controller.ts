@@ -21,8 +21,9 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 
 import { PublicationService } from '../services/publication.service';
-import { Public, Roles } from '../../core/decorators/api.decorator';
+import { GetUser, Public, Roles } from '../../core/decorators/api.decorator';
 import { UserRole } from '../../shared/common.enum';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import { PublicationStatus } from '../community.enum';
 
 import {
@@ -59,21 +60,39 @@ export class PublicationController {
   @Get('admin')
   @Roles(UserRole.admin, UserRole.engineer)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Lister toutes les publications (tous statuts)' })
-  @ApiQuery({ name: 'churchId', required: false, type: String })
+  @ApiOperation({ summary: '[Admin] Liste complète des publications (toutes églises, tous statuts)' })
   @ApiQuery({ name: 'groupId', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, enum: PublicationStatus })
+  @ApiQuery({ name: 'churchId', required: false, type: String, description: 'Déprécié — préférer /publications/church/:churchId' })
   listAdmin(@Query() query: ListPublicationAdminQuery) {
     return this.publicationService.listAdmin(query);
   }
 
-  /** POST /publications — admin, engineer */
-  @Post()
-  @Roles(UserRole.admin, UserRole.engineer)
+  /**
+   * GET /publications/church/:churchId — publications d'UNE église (tous statuts).
+   * Accès : admin/engineer, ou membre du clergé ACTIF de cette église.
+   * ⚠️ Déclarée AVANT `:id`.
+   */
+  @Get('church/:churchId')
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Créer une publication (brouillon)' })
-  create(@Body() body: CreatePublicationDto) {
-    return this.publicationService.create(body);
+  @ApiOperation({ summary: "Liste complète des publications d'une église (clergé de cette église, ou admin)" })
+  @ApiQuery({ name: 'groupId', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, enum: PublicationStatus })
+  listForChurch(
+    @GetUser() user: JwtUserInfo,
+    @Param('churchId') churchId: string,
+    @Query() query: ListPublicationAdminQuery,
+  ) {
+    return this.publicationService.listForChurch(user, churchId, query);
+  }
+
+  /** POST /publications — admin, engineer, ou clergé actif de l'église visée */
+  @Post()
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Créer une publication (admin, ou clergé de cette église)' })
+  create(@GetUser() user: JwtUserInfo, @Body() body: CreatePublicationDto) {
+    return this.publicationService.create(user, body);
   }
 
   /** GET /publications/:id — publique uniquement si PUBLISHED */
@@ -84,31 +103,39 @@ export class PublicationController {
     return this.publicationService.getPublicById(id);
   }
 
-  /** PATCH /publications/:id — admin, engineer */
+  /** PATCH /publications/:id — admin, engineer, ou clergé actif de l'église visée */
   @Patch(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Mettre à jour une publication' })
-  update(@Param('id') id: string, @Body() body: UpdatePublicationDto) {
-    return this.publicationService.update(id, body);
+  @ApiOperation({ summary: 'Mettre à jour une publication (admin, ou clergé de cette église)' })
+  update(
+    @GetUser() user: JwtUserInfo,
+    @Param('id') id: string,
+    @Body() body: UpdatePublicationDto,
+  ) {
+    return this.publicationService.update(user, id, body);
   }
 
-  /** PATCH /publications/:id/status — admin, engineer */
+  /** PATCH /publications/:id/status — admin, engineer, ou clergé actif de l'église visée */
   @Patch(':id/status')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "[Admin] Changer le statut d'une publication" })
-  updateStatus(@Param('id') id: string, @Body() body: UpdatePublicationStatusDto) {
-    return this.publicationService.updateStatus(id, body.status);
+  @ApiOperation({ summary: "Changer le statut d'une publication (admin, ou clergé de cette église)" })
+  updateStatus(
+    @GetUser() user: JwtUserInfo,
+    @Param('id') id: string,
+    @Body() body: UpdatePublicationStatusDto,
+  ) {
+    return this.publicationService.updateStatus(user, id, body.status);
   }
 
-  /** DELETE /publications/:id — admin, engineer */
+  /** DELETE /publications/:id — admin, engineer, ou clergé actif de l'église visée */
   @Delete(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Supprimer une publication' })
-  delete(@Param('id') id: string) {
-    return this.publicationService.delete(id);
+  @ApiOperation({ summary: 'Supprimer une publication (admin, ou clergé de cette église)' })
+  delete(@GetUser() user: JwtUserInfo, @Param('id') id: string) {
+    return this.publicationService.delete(user, id);
   }
 }

@@ -10,10 +10,12 @@ import { Repository } from 'typeorm';
 import { Publication } from '../entities/publication.entity';
 import { PublicationStatus } from '../community.enum';
 import { ChurchService } from '../../church/services/church.service';
+import { ClergyMemberService } from '../../church/services/clergy-member.service';
 import { GroupService } from './group.service';
 import { TypeService } from '../../type/services/type.service';
 import { TypeScope } from '../../type/type.enum';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import {
   CreatePublicationDto,
   ListPublicationAdminQuery,
@@ -26,6 +28,7 @@ export class PublicationService {
   constructor(
     @InjectRepository(Publication) private readonly pubRepo: Repository<Publication>,
     private readonly churchService: ChurchService,
+    private readonly clergyMemberService: ClergyMemberService,
     private readonly groupService: GroupService,
     private readonly typeService: TypeService,
   ) {}
@@ -47,11 +50,39 @@ export class PublicationService {
     return qb.getMany();
   }
 
-  /** [Admin] Tous statuts confondus, sans fenêtre d'affichage */
-  async listAdmin(query: ListPublicationAdminQuery): Promise<Publication[]> {
+  /**
+   * [Admin] Liste complète (tous statuts, sans fenêtre d'affichage), toutes
+   * églises. `churchId` reste accepté (déprécié — préférer
+   * `GET /publications/church/:churchId`).
+   */
+  async listAdmin(query: ListPublicationAdminQuery = {}): Promise<Publication[]> {
     let qb = this.pubRepo.createQueryBuilder('p').orderBy('p.createdAt', 'DESC');
 
     if (query.churchId) qb = qb.andWhere('p.churchId = :churchId', { churchId: query.churchId });
+    if (query.groupId) qb = qb.andWhere('p.groupId = :groupId', { groupId: query.groupId });
+    if (query.status) qb = qb.andWhere('p.status = :status', { status: query.status });
+
+    return qb.getMany();
+  }
+
+  /**
+   * Liste complète des publications d'UNE église (tous statuts) — réservée
+   * au clergé ACTIF de cette église (ou admin/engineer). 404 si l'église
+   * est inconnue. Filtres `groupId` / `status` disponibles.
+   */
+  async listForChurch(
+    user: JwtUserInfo,
+    churchId: string,
+    query: ListPublicationAdminQuery = {},
+  ): Promise<Publication[]> {
+    await this.churchService.getById(churchId);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
+
+    let qb = this.pubRepo
+      .createQueryBuilder('p')
+      .where('p.churchId = :churchId', { churchId })
+      .orderBy('p.createdAt', 'DESC');
+
     if (query.groupId) qb = qb.andWhere('p.groupId = :groupId', { groupId: query.groupId });
     if (query.status) qb = qb.andWhere('p.status = :status', { status: query.status });
 
@@ -73,8 +104,9 @@ export class PublicationService {
     return publication;
   }
 
-  async create(body: CreatePublicationDto): Promise<Publication> {
+  async create(user: JwtUserInfo, body: CreatePublicationDto): Promise<Publication> {
     await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
+    await this.clergyMemberService.assertAuthorizedForChurch(user, body.churchId);
 
     if (body.groupId) {
       const group = await this.groupService.getById(body.groupId);
@@ -89,15 +121,21 @@ export class PublicationService {
     return this.pubRepo.save(publication);
   }
 
-  async update(id: string, body: UpdatePublicationDto): Promise<Publication> {
-    await this.getById(id);
+  async update(user: JwtUserInfo, id: string, body: UpdatePublicationDto): Promise<Publication> {
+    const existing = await this.getById(id);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, existing.churchId);
     await this.pubRepo.update(id, body);
     return this.getById(id);
   }
 
   /** `publishedAt` posé automatiquement au premier passage en PUBLISHED */
-  async updateStatus(id: string, status: PublicationStatus): Promise<Publication> {
+  async updateStatus(
+    user: JwtUserInfo,
+    id: string,
+    status: PublicationStatus,
+  ): Promise<Publication> {
     const publication = await this.getById(id);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, publication.churchId);
     const patch: Partial<Publication> = { status };
     if (status === PublicationStatus.PUBLISHED && !publication.publishedAt) {
       patch.publishedAt = new Date();
@@ -106,8 +144,9 @@ export class PublicationService {
     return this.getById(id);
   }
 
-  async delete(id: string): Promise<{ success: boolean }> {
-    await this.getById(id);
+  async delete(user: JwtUserInfo, id: string): Promise<{ success: boolean }> {
+    const existing = await this.getById(id);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, existing.churchId);
     await this.pubRepo.delete(id);
     return { success: true };
   }

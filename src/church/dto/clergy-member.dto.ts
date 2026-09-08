@@ -39,8 +39,8 @@ export class UpdateClergyMemberDto {
 }
 
 export interface ListClergyMemberQuery {
-  /** Obligatoire côté service — une affectation référence toujours son église */
-  churchId: string;
+  /** Optionnel : filtre par église. Absent → toutes les affectations (back-office). */
+  churchId?: string;
   /** true = uniquement les affectations actives (endDate vide) */
   activeOnly?: boolean;
 }

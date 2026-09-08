@@ -17,9 +17,8 @@ import {
   Param,
   Patch,
   Post,
-  Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 import { MembershipService } from '../services/membership.service';
 import { GetUser, Roles } from '../../core/decorators/api.decorator';
@@ -42,18 +41,26 @@ export class MembershipController {
   }
 
   /**
-   * GET /memberships/admin?churchId=...
-   * Accessible : admin, engineer.
-   * ⚠️ Doit être déclarée AVANT `:id` pour éviter que NestJS
-   * interprète "admin" comme un id.
+   * GET /memberships/admin — liste complète, toutes églises.
+   * ⚠️ Déclarée AVANT `:id`.
    */
   @Get('admin')
   @Roles(UserRole.admin, UserRole.engineer)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "[Admin] Lister les fidèles qui suivent une église" })
-  @ApiQuery({ name: 'churchId', required: true, type: String })
-  listForChurch(@Query('churchId') churchId: string) {
-    return this.membershipService.listForChurch(churchId);
+  @ApiOperation({ summary: '[Admin] Liste complète des abonnements fidèle⇄paroisse (toutes églises)' })
+  listAdmin() {
+    return this.membershipService.listAdmin();
+  }
+
+  /**
+   * GET /memberships/church/:churchId — abonnés d'UNE église.
+   * Accès : admin/engineer, ou membre du clergé ACTIF de cette église.
+   */
+  @Get('church/:churchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Liste complète des abonnés d'une église (clergé de cette église, ou admin)" })
+  listForChurch(@GetUser() user: JwtUserInfo, @Param('churchId') churchId: string) {
+    return this.membershipService.listForChurch(user, churchId);
   }
 
   /** POST /memberships — suivre une paroisse */

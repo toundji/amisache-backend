@@ -22,8 +22,9 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 
 import { ClergyMemberService } from '../services/clergy-member.service';
-import { Public, Roles } from '../../core/decorators/api.decorator';
+import { GetUser, Public, Roles } from '../../core/decorators/api.decorator';
 import { UserRole } from '../../shared/common.enum';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 
 import { CreateClergyMemberDto, UpdateClergyMemberDto } from '../dto/clergy-member.dto';
 import type { ListClergyMemberQuery } from '../dto/clergy-member.dto';
@@ -33,14 +34,43 @@ import type { ListClergyMemberQuery } from '../dto/clergy-member.dto';
 export class ClergyMemberController {
   constructor(private readonly clergyMemberService: ClergyMemberService) {}
 
-  /** GET /clergy-members?churchId=...&activeOnly=true — liste publique */
+  /** GET /clergy-members?churchId=...&activeOnly=true — churchId optionnel (absent → toutes) */
   @Get()
   @Public()
-  @ApiOperation({ summary: 'Lister les affectations du clergé/personnel pour une église' })
-  @ApiQuery({ name: 'churchId', required: true, type: String })
+  @ApiOperation({ summary: 'Lister les affectations du clergé/personnel (toutes, ou pour une église)' })
+  @ApiQuery({ name: 'churchId', required: false, type: String })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
   list(@Query() query: ListClergyMemberQuery) {
     return this.clergyMemberService.list(query);
+  }
+
+  /**
+   * GET /clergy-members/admin — liste complète, toutes églises.
+   * ⚠️ Déclarée AVANT `:id` (sinon NestJS lit "admin" comme un id).
+   */
+  @Get('admin')
+  @Roles(UserRole.admin, UserRole.engineer)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Liste complète des affectations (toutes églises)' })
+  @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
+  listAdmin(@Query() query: ListClergyMemberQuery) {
+    return this.clergyMemberService.listAdmin(query);
+  }
+
+  /**
+   * GET /clergy-members/church/:churchId — liste complète d'UNE église.
+   * Accès : admin/engineer, ou membre du clergé ACTIF de cette église.
+   */
+  @Get('church/:churchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Liste complète des affectations d'une église (clergé de cette église, ou admin)" })
+  @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
+  listForChurch(
+    @GetUser() user: JwtUserInfo,
+    @Param('churchId') churchId: string,
+    @Query() query: ListClergyMemberQuery,
+  ) {
+    return this.clergyMemberService.listForChurch(user, churchId, query);
   }
 
   /** GET /clergy-members/:id */

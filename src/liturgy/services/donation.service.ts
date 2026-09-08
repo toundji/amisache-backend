@@ -9,10 +9,12 @@ import { Repository } from 'typeorm';
 
 import { Donation } from '../entities/donation.entity';
 import { ChurchService } from '../../church/services/church.service';
+import { ClergyMemberService } from '../../church/services/clergy-member.service';
 import { TypeService } from '../../type/services/type.service';
 import { TypeScope } from '../../type/type.enum';
 import { PaymentService } from '../../payment/services/payment.service';
 import { ApiErrorNotFoundById } from '../../utils/api-error';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import { CreateDonationDto, ListDonationQuery } from '../dto/donation.dto';
 
 @Injectable()
@@ -20,6 +22,7 @@ export class DonationService {
   constructor(
     @InjectRepository(Donation) private readonly donationRepo: Repository<Donation>,
     private readonly churchService: ChurchService,
+    private readonly clergyMemberService: ClergyMemberService,
     private readonly typeService: TypeService,
     private readonly paymentService: PaymentService,
   ) {}
@@ -28,10 +31,26 @@ export class DonationService {
     return this.donationRepo.find({ where: { userId }, order: { date: 'DESC' } });
   }
 
-  /** [Admin] Tous les dons, filtrables par église */
-  async listAdmin(query: ListDonationQuery): Promise<Donation[]> {
+  /**
+   * [Admin] Liste complète des dons, toutes églises. `churchId` reste
+   * accepté (déprécié — préférer `GET /donations/church/:churchId`).
+   */
+  async listAdmin(query: ListDonationQuery = {}): Promise<Donation[]> {
     return this.donationRepo.find({
       where: query.churchId ? { churchId: query.churchId } : {},
+      order: { date: 'DESC' },
+    });
+  }
+
+  /**
+   * Liste complète des dons d'UNE église — réservée au clergé ACTIF de
+   * cette église (ou admin/engineer). 404 si l'église est inconnue.
+   */
+  async listForChurch(user: JwtUserInfo, churchId: string): Promise<Donation[]> {
+    await this.churchService.getById(churchId);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
+    return this.donationRepo.find({
+      where: { churchId },
       order: { date: 'DESC' },
     });
   }

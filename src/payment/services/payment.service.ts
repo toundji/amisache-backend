@@ -11,19 +11,58 @@ import { Repository } from 'typeorm';
 import { Payment } from '../entities/payment.entity';
 import { PaymentStatus } from '../payment.enum';
 import { PaymentMethodService } from './payment-method.service';
+import { ChurchService } from '../../church/services/church.service';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { ApiFsUtils } from '../../utils/api-fs';
 import { ImageDto } from '../../shared/media.dto';
-import { SubmitPaymentDto } from '../dto/payment.dto';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
+import { ListPaymentQuery, SubmitPaymentDto } from '../dto/payment.dto';
 
 @Injectable()
 export class PaymentService {
   constructor(
     @InjectRepository(Payment) private readonly paymentRepo: Repository<Payment>,
     private readonly paymentMethodService: PaymentMethodService,
+    private readonly churchService: ChurchService,
     private readonly clergyMemberService: ClergyMemberService,
   ) {}
+
+  /**
+   * [Admin] Liste complète des paiements, toutes églises. Filtre `status`.
+   * Chaque paiement porte son `paymentMethod` (pour retrouver la paroisse).
+   */
+  async listAdmin(query: ListPaymentQuery = {}): Promise<Payment[]> {
+    return this.paymentRepo.find({
+      where: query.status ? { status: query.status } : {},
+      relations: { paymentMethod: true },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Liste complète des paiements d'UNE église (déduite de
+   * `paymentMethod.churchId`) — réservée au clergé ACTIF de cette église
+   * (ou admin/engineer). 404 si l'église est inconnue.
+   */
+  async listForChurch(
+    user: JwtUserInfo,
+    churchId: string,
+    query: ListPaymentQuery = {},
+  ): Promise<Payment[]> {
+    await this.churchService.getById(churchId);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
+
+    let qb = this.paymentRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.paymentMethod', 'pm')
+      .where('pm.church_id = :churchId', { churchId })
+      .orderBy('p.created_at', 'DESC');
+
+    if (query.status) qb = qb.andWhere('p.status = :status', { status: query.status });
+
+    return qb.getMany();
+  }
 
   async getById(id: string): Promise<Payment> {
     const payment = await this.paymentRepo.findOne({ where: { id } });

@@ -39,10 +39,22 @@ export class DonationController {
   @Get('admin')
   @Roles(UserRole.admin, UserRole.engineer)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Lister tous les dons (filtrable par église)' })
-  @ApiQuery({ name: 'churchId', required: false, type: String })
+  @ApiOperation({ summary: '[Admin] Liste complète des dons (toutes églises)' })
+  @ApiQuery({ name: 'churchId', required: false, type: String, description: 'Déprécié — préférer /donations/church/:churchId' })
   listAdmin(@Query() query: ListDonationQuery) {
     return this.donationService.listAdmin(query);
+  }
+
+  /**
+   * GET /donations/church/:churchId — dons d'UNE église.
+   * Accès : admin/engineer, ou membre du clergé ACTIF de cette église.
+   * ⚠️ Déclarée AVANT `:id`.
+   */
+  @Get('church/:churchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Liste complète des dons d'une église (clergé de cette église, ou admin)" })
+  listForChurch(@GetUser() user: JwtUserInfo, @Param('churchId') churchId: string) {
+    return this.donationService.listForChurch(user, churchId);
   }
 
   /** POST /donations — faire un don (paiement toujours requis) */

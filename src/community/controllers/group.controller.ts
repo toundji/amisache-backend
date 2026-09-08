@@ -20,8 +20,9 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 
 import { GroupService } from '../services/group.service';
-import { Public, Roles } from '../../core/decorators/api.decorator';
+import { GetUser, Public, Roles } from '../../core/decorators/api.decorator';
 import { UserRole } from '../../shared/common.enum';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 
 import { CreateGroupDto, UpdateGroupDto } from '../dto/group.dto';
 import type { ListGroupQuery } from '../dto/group.dto';
@@ -40,6 +41,29 @@ export class GroupController {
     return this.groupService.list(query);
   }
 
+  /**
+   * GET /groups/admin — liste complète, toutes églises.
+   * ⚠️ Déclarée AVANT `:id`.
+   */
+  @Get('admin')
+  @Roles(UserRole.admin, UserRole.engineer)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Liste complète des groupes (toutes églises)' })
+  listAdmin() {
+    return this.groupService.listAdmin();
+  }
+
+  /**
+   * GET /groups/church/:churchId — groupes d'UNE église.
+   * Accès : admin/engineer, ou membre du clergé ACTIF de cette église.
+   */
+  @Get('church/:churchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Liste complète des groupes d'une église (clergé de cette église, ou admin)" })
+  listForChurch(@GetUser() user: JwtUserInfo, @Param('churchId') churchId: string) {
+    return this.groupService.listForChurch(user, churchId);
+  }
+
   /** GET /groups/:id */
   @Get(':id')
   @Public()
@@ -48,31 +72,31 @@ export class GroupController {
     return this.groupService.getById(id);
   }
 
-  /** POST /groups — admin, engineer */
+  /** POST /groups — admin, engineer, ou clergé actif de l'église visée */
   @Post()
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Créer un groupe' })
-  create(@Body() body: CreateGroupDto) {
-    return this.groupService.create(body);
+  @ApiOperation({ summary: 'Créer un groupe (admin, ou clergé de cette église)' })
+  create(@GetUser() user: JwtUserInfo, @Body() body: CreateGroupDto) {
+    return this.groupService.create(user, body);
   }
 
-  /** PATCH /groups/:id — admin, engineer */
+  /** PATCH /groups/:id — admin, engineer, ou clergé actif de l'église visée */
   @Patch(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Mettre à jour un groupe' })
-  update(@Param('id') id: string, @Body() body: UpdateGroupDto) {
-    return this.groupService.update(id, body);
+  @ApiOperation({ summary: 'Mettre à jour un groupe (admin, ou clergé de cette église)' })
+  update(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateGroupDto) {
+    return this.groupService.update(user, id, body);
   }
 
-  /** DELETE /groups/:id — admin, engineer */
+  /** DELETE /groups/:id — admin, engineer, ou clergé actif de l'église visée */
   @Delete(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Supprimer un groupe' })
-  delete(@Param('id') id: string) {
-    return this.groupService.delete(id);
+  @ApiOperation({ summary: 'Supprimer un groupe (admin, ou clergé de cette église)' })
+  delete(@GetUser() user: JwtUserInfo, @Param('id') id: string) {
+    return this.groupService.delete(user, id);
   }
 }

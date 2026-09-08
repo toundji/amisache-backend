@@ -8,7 +8,9 @@ import { Repository } from 'typeorm';
 
 import { Entrance } from '../entities/entrance.entity';
 import { ChurchService } from './church.service';
+import { ClergyMemberService } from './clergy-member.service';
 import { ApiErrorNotFoundById } from '../../utils/api-error';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import type { Point } from '../../shared/geo';
 import {
   CreateEntranceDto,
@@ -25,17 +27,37 @@ export class EntranceService {
   constructor(
     @InjectRepository(Entrance) private readonly entranceRepo: Repository<Entrance>,
     private readonly churchService: ChurchService,
+    private readonly clergyMemberService: ClergyMemberService,
   ) {}
 
-  async list(query: ListEntranceQuery): Promise<Entrance[]> {
+  async list(query: ListEntranceQuery = {}): Promise<Entrance[]> {
     return this.entranceRepo.find({
-      where: { churchId: query.churchId },
+      where: query.churchId ? { churchId: query.churchId } : {},
+      relations: { church: true },
       order: { name: 'ASC' },
     });
   }
 
+  /** [Admin] Liste complète, toutes églises confondues. */
+  async listAdmin(): Promise<Entrance[]> {
+    return this.list();
+  }
+
+  /**
+   * Liste complète des entrées d'UNE église — réservée au clergé ACTIF de
+   * cette église (ou admin/engineer). 404 si l'église est inconnue.
+   */
+  async listForChurch(user: JwtUserInfo, churchId: string): Promise<Entrance[]> {
+    await this.churchService.getById(churchId);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
+    return this.list({ churchId });
+  }
+
   async getById(id: string): Promise<Entrance> {
-    const entrance = await this.entranceRepo.findOne({ where: { id } });
+    const entrance = await this.entranceRepo.findOne({
+      where: { id },
+      relations: { church: true },
+    });
     if (!entrance) throw new ApiErrorNotFoundById('entrances', id);
     return entrance;
   }

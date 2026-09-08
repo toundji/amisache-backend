@@ -40,11 +40,28 @@ export class RequestController {
   @Get('admin')
   @Roles(UserRole.admin, UserRole.engineer)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Lister toutes les demandes (filtrable)' })
-  @ApiQuery({ name: 'churchId', required: false, type: String })
+  @ApiOperation({ summary: '[Admin] Liste complète des demandes (toutes églises, filtre statut)' })
   @ApiQuery({ name: 'status', required: false, enum: RequestStatus })
+  @ApiQuery({ name: 'churchId', required: false, type: String, description: 'Déprécié — préférer /requests/church/:churchId' })
   listAdmin(@Query() query: ListRequestQuery) {
     return this.requestService.listAdmin(query);
+  }
+
+  /**
+   * GET /requests/church/:churchId — demandes d'UNE église.
+   * Accès : admin/engineer, ou membre du clergé ACTIF de cette église.
+   * ⚠️ Déclarée AVANT `:id`.
+   */
+  @Get('church/:churchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Liste complète des demandes d'une église (clergé de cette église, ou admin)" })
+  @ApiQuery({ name: 'status', required: false, enum: RequestStatus })
+  listForChurch(
+    @GetUser() user: JwtUserInfo,
+    @Param('churchId') churchId: string,
+    @Query() query: ListRequestQuery,
+  ) {
+    return this.requestService.listForChurch(user, churchId, query);
   }
 
   /** POST /requests — déposer une demande (intention ou sacrement) */

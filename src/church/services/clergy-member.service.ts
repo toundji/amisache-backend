@@ -4,14 +4,16 @@
 // dérivent de ces affectations (cahier-des-charges §3) — pas géré ici,
 // juste le CRUD de la table qui les porte.
 // ============================================================
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { ClergyMember } from '../entities/clergy-member.entity';
 import { ChurchService } from './church.service';
 import { UserService } from '../../users/services/user.service';
-import { ApiErrorNotFoundById } from '../../utils/api-error';
+import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
+import { UserRole } from '../../shared/common.enum';
 import {
   CreateClergyMemberDto,
   ListClergyMemberQuery,
@@ -27,21 +29,41 @@ export class ClergyMemberService {
     private readonly userService: UserService,
   ) {}
 
-  async list(query: ListClergyMemberQuery): Promise<ClergyMember[]> {
+  async list(query: ListClergyMemberQuery = {}): Promise<ClergyMember[]> {
     return this.clergyRepo.find({
       where: {
-        churchId: query.churchId,
+        ...(query.churchId ? { churchId: query.churchId } : {}),
         ...(query.activeOnly ? { endDate: IsNull() } : {}),
       },
-      relations: { user: true },
+      relations: { user: true, church: true },
       order: { startDate: 'DESC' },
     });
+  }
+
+  /** [Admin] Liste complète, toutes églises confondues. */
+  async listAdmin(query: ListClergyMemberQuery = {}): Promise<ClergyMember[]> {
+    return this.list({ activeOnly: query.activeOnly });
+  }
+
+  /**
+   * Liste complète des affectations d'UNE église — réservée au clergé
+   * ACTIF de cette église (ou admin/engineer). 404 si l'église est inconnue,
+   * 403 si l'appelant n'y est pas autorisé.
+   */
+  async listForChurch(
+    user: JwtUserInfo,
+    churchId: string,
+    query: ListClergyMemberQuery = {},
+  ): Promise<ClergyMember[]> {
+    await this.churchService.getById(churchId);
+    await this.assertAuthorizedForChurch(user, churchId);
+    return this.list({ churchId, activeOnly: query.activeOnly });
   }
 
   async getById(id: string): Promise<ClergyMember> {
     const member = await this.clergyRepo.findOne({
       where: { id },
-      relations: { user: true },
+      relations: { user: true, church: true },
     });
     if (!member) throw new ApiErrorNotFoundById('clergy_members', id);
     return member;
@@ -92,5 +114,32 @@ export class ClergyMemberService {
         },
       ],
     });
+  }
+
+  /**
+   * Autorise une écriture sur une ressource rattachée à UNE église : les
+   * rôles plateforme (`admin`/`engineer`) passent toujours ; sinon
+   * l'appelant doit être un `ClergyMember` ACTIF de CETTE église précise.
+   *
+   * ⚠️ Ne jamais remplacer par un simple test de `UserRole.clergy` — ce
+   * rôle est un marqueur plateforme grossier, sans portée par église
+   * (AMISACHE.md §5). C'est cette méthode qui porte l'isolation
+   * multi-tenant pour les routes CRUD ouvertes au clergé (Schedule,
+   * PaymentMethod, Group, Publication...). Distincte de la règle encore
+   * plus stricte de `PaymentService.confirmOrReject` (§7.6), qui n'a
+   * aucun bypass admin/engineer.
+   */
+  async assertAuthorizedForChurch(user: JwtUserInfo, churchId: string): Promise<void> {
+    if (user.roles.includes(UserRole.admin) || user.roles.includes(UserRole.engineer)) {
+      return;
+    }
+
+    const clergyMember = await this.findActiveForUserAndChurch(user.id, churchId);
+    if (!clergyMember) {
+      throw new ApiError(
+        'Seul un membre du clergé actif de cette église peut effectuer cette action.',
+        { code: HttpStatus.FORBIDDEN },
+      );
+    }
   }
 }

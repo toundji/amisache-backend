@@ -50,8 +50,11 @@ export class UpdatePaymentMethodDto {
 }
 
 export interface ListPaymentMethodQuery {
-  /** Obligatoire côté service — une méthode de paiement référence toujours son église */
-  churchId: string;
-  /** Défaut true côté service — seules les méthodes actives intéressent le fidèle */
+  /**
+   * Requis pour la route publique `GET /payment-methods` ; ignoré par
+   * `/admin` (toutes églises) et `/church/:churchId` (église dans le path).
+   */
+  churchId?: string;
+  /** Défaut true côté route publique — seules les méthodes actives intéressent le fidèle */
   activeOnly?: boolean;
 }

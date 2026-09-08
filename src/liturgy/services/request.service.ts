@@ -12,10 +12,12 @@ import { RequestStatus } from '../liturgy.enum';
 import { isValidScheduleOccurrence } from '../liturgy.util';
 import { ScheduleService } from './schedule.service';
 import { ChurchService } from '../../church/services/church.service';
+import { ClergyMemberService } from '../../church/services/clergy-member.service';
 import { TypeService } from '../../type/services/type.service';
 import { TypeScope } from '../../type/type.enum';
 import { PaymentService } from '../../payment/services/payment.service';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import { CreateRequestDto, ListRequestQuery, UpdateRequestStatusDto } from '../dto/request.dto';
 
 @Injectable()
@@ -23,6 +25,7 @@ export class RequestService {
   constructor(
     @InjectRepository(Request) private readonly requestRepo: Repository<Request>,
     private readonly churchService: ChurchService,
+    private readonly clergyMemberService: ClergyMemberService,
     private readonly scheduleService: ScheduleService,
     private readonly typeService: TypeService,
     private readonly paymentService: PaymentService,
@@ -32,11 +35,35 @@ export class RequestService {
     return this.requestRepo.find({ where: { userId }, order: { createdAt: 'DESC' } });
   }
 
-  /** [Admin] Toutes les demandes, filtrables par église et/ou statut */
-  async listAdmin(query: ListRequestQuery): Promise<Request[]> {
+  /**
+   * [Admin] Liste complète des demandes, toutes églises. Filtre `status`
+   * disponible. `churchId` reste accepté (déprécié — préférer
+   * `GET /requests/church/:churchId`).
+   */
+  async listAdmin(query: ListRequestQuery = {}): Promise<Request[]> {
     return this.requestRepo.find({
       where: {
         ...(query.churchId ? { churchId: query.churchId } : {}),
+        ...(query.status ? { status: query.status } : {}),
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Liste complète des demandes d'UNE église — réservée au clergé ACTIF de
+   * cette église (ou admin/engineer). 404 si l'église est inconnue.
+   */
+  async listForChurch(
+    user: JwtUserInfo,
+    churchId: string,
+    query: ListRequestQuery = {},
+  ): Promise<Request[]> {
+    await this.churchService.getById(churchId);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
+    return this.requestRepo.find({
+      where: {
+        churchId,
         ...(query.status ? { status: query.status } : {}),
       },
       order: { createdAt: 'DESC' },
