@@ -9,7 +9,7 @@ import { Repository, FindManyOptions, ILike, FindOptionsWhere } from 'typeorm';
 
 import { User } from '../entities/user.entity';
 import { PasswordService } from '../../auth/services/password.service';
-import { SessionService } from '../../auth/services/session.service';
+import { SessionService, SessionInfo } from '../../auth/services/session.service';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { UserRole, UserStatus } from '../../shared/common.enum';
 import { ImageDto } from '../../shared/media.dto';
@@ -211,6 +211,31 @@ export class UserService {
 
   adminResetPassword(userIdOrEmail: string, newPassword: string) {
     return this.passwordService.adminResetPassword(userIdOrEmail, newPassword);
+  }
+
+  // ── Admin — sessions / équipements d'un utilisateur ───────
+  // Réutilise SessionService (générique par userId). Révoquer supprime la
+  // ligne de session → le refresh token meurt ; l'access token de l'appareil
+  // visé (courte durée) expire seul (on n'a pas son jti pour le blacklister).
+
+  async listUserSessions(id: string): Promise<SessionInfo[]> {
+    await this.getById(id); // 404 propre si l'utilisateur n'existe pas
+    return this.sessionService.getUserSessions(id);
+  }
+
+  async revokeUserSession(
+    id: string,
+    sessionId: string,
+  ): Promise<{ success: boolean }> {
+    await this.getById(id);
+    await this.sessionService.deleteSessionById(id, sessionId);
+    return { success: true };
+  }
+
+  async revokeAllUserSessions(id: string): Promise<{ success: boolean }> {
+    await this.getById(id);
+    await this.sessionService.deleteAllSessions(id);
+    return { success: true };
   }
 
   // ── Admin — suppression définitive ───────────────────────

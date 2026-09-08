@@ -221,6 +221,37 @@ export class UserController {
     );
   }
 
+  // ── Admin — sessions / équipements d'un utilisateur ───────
+
+  /** GET /users/:id/sessions — équipements connectés d'un utilisateur */
+  @Get(':id/sessions')
+  @Roles(UserRole.admin, UserRole.engineer)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "[Admin] Lister les équipements connectés d'un utilisateur" })
+  getUserSessions(@Param('id') id: string) {
+    return this.userService.listUserSessions(id);
+  }
+
+  /** DELETE /users/:id/sessions/:sessionId — révoquer une session précise */
+  @Delete(':id/sessions/:sessionId')
+  @Roles(UserRole.admin)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "[Admin] Révoquer une session d'un utilisateur" })
+  revokeUserSession(@Param('id') id: string, @Param('sessionId') sessionId: string) {
+    return this.userService.revokeUserSession(id, sessionId);
+  }
+
+  /** DELETE /users/:id/sessions — déconnexion de tous les équipements */
+  @Delete(':id/sessions')
+  @Roles(UserRole.admin)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "[Admin] Révoquer toutes les sessions d'un utilisateur (déconnexion partout)" })
+  revokeAllUserSessions(@Param('id') id: string) {
+    return this.userService.revokeAllUserSessions(id);
+  }
+
   // ── Admin — suppression définitive ───────────────────────
 
   /**

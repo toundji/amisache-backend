@@ -57,6 +57,22 @@ Prochaines étapes ouvertes :
 > Format d'une entrée : `### AAAA-MM-JJ — Titre court` puis **Décision**, **Pourquoi**,
 > et si utile **Conséquences** (fichiers touchés, invariantes à tenir).
 
+### 2026-09-08 — Gestion admin des sessions/équipements d'un utilisateur (socle)
+- **Décision** : le panel doit pouvoir voir et révoquer les sessions d'un **autre** compte
+  depuis sa fiche. Trois routes ajoutées dans `UserController` (socle `users/`) :
+  `GET /users/:id/sessions`, `DELETE /users/:id/sessions/:sessionId` (révoque une),
+  `DELETE /users/:id/sessions` (déconnexion partout). Déléguées à `UserService`
+  (validation `getById` → 404 propre) qui réutilise `SessionService` (déjà générique par
+  `userId`, exporté par `AuthModule`) — `session.service.ts` **inchangé**.
+- **Pourquoi** : seul manque fonctionnel restant de l'audit tables↔panel (voir l'échange du
+  jour) ; c'est du **socle générique**, pas du métier Amisache.
+- **Conséquences** : ajout générique → entrée `FEAT-001` dans `TEMPLATE-FIXES.md` pour
+  remontée au template. Panel : carte « Sessions & appareils » sur `user-detail`
+  (`UserService.getUserSessions/revokeUserSession/revokeAllUserSessions`). Limite assumée :
+  l'access token de l'appareil visé expire seul (pas de blacklist Redis de son `jti`, on ne
+  l'a pas — même compromis que le self-service `AuthService.revokeSession`). Aucune migration.
+  Build + boot vérifiés (routes mappées).
+
 ### 2026-09-08 — Paire de listes complètes `admin` / `church/:churchId` sur les ressources rattachées à une église
 - **Décision** : pour chaque ressource métier rattachée à une `Church`, deux endpoints de
   **liste complète non paginée** :

@@ -27,6 +27,28 @@ Une correction va ici **si et seulement si** :
 
 ## À remonter
 
+### FEAT-001 — Gestion admin des sessions/équipements d'un utilisateur
+- **Statut** : 🔴 À remonter
+- **Nature** : *ajout de fonctionnalité générique* (pas un correctif de bug) — le socle
+  n'exposait la gestion des sessions qu'en self-service (`/auth/sessions*`). Un back-office
+  ne pouvait ni lister ni révoquer les sessions d'un **autre** compte.
+- **Couche/fichier socle** : `users/controllers/user.controller.ts`, `users/services/user.service.ts`
+  (`auth/services/session.service.ts` **inchangé** — ses méthodes `getUserSessions`,
+  `deleteSessionById`, `deleteAllSessions` sont déjà génériques par `userId` et exportées
+  par `AuthModule`).
+- **Ajout** : trois routes admin dans `UserController` (déléguées à `UserService`, qui
+  valide l'existence du compte via `getById` pour un 404 propre) —
+  - `GET /users/:id/sessions` — `@Roles(admin, engineer)` — liste des équipements connectés ;
+  - `DELETE /users/:id/sessions/:sessionId` — `@Roles(admin)` — révoque une session ;
+  - `DELETE /users/:id/sessions` — `@Roles(admin)` — révoque toutes les sessions (déconnexion
+    partout).
+- **Limite assumée** : révoquer supprime la ligne de session (le refresh token meurt) ; l'access
+  token de l'appareil visé expire seul — on n'a pas son `jti` pour le blacklister dans Redis
+  (même comportement que `AuthService.revokeSession` en self-service).
+- **Test** : (à écrire avec la remontée) admin liste les sessions d'un user B, en révoque une →
+  absente au rechargement ; un non-admin sur ces routes → 403.
+- **Date** : 2026-09-08
+
 ### FIX-010 — `.gitignore` excluait `src/database/migrations`
 - **Statut** : 🔴 À remonter
 - **Couche/fichier socle** : `.gitignore`, `database/`
