@@ -18,11 +18,12 @@ export class ZoneService {
     private readonly regionService: RegionService,
   ) {}
 
-  async list(query: ListZoneQuery): Promise<Zone[]> {
-    let qb = this.zoneRepo
-      .createQueryBuilder('z')
-      .where('z.regionId = :regionId', { regionId: query.regionId })
-      .orderBy('z.name', 'ASC');
+  async list(query: ListZoneQuery = {}): Promise<Zone[]> {
+    let qb = this.zoneRepo.createQueryBuilder('z').orderBy('z.name', 'ASC');
+
+    if (query.regionId?.trim()) {
+      qb = qb.andWhere('z.regionId = :regionId', { regionId: query.regionId.trim() });
+    }
 
     if (query.search?.trim()) {
       qb = qb.andWhere('z.name LIKE :term', { term: `%${query.search.trim()}%` });

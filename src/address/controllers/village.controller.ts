@@ -31,11 +31,11 @@ import type { ListVillageQuery } from '../dto/village.dto';
 export class VillageController {
   constructor(private readonly villageService: VillageService) {}
 
-  /** GET /villages?zoneId=... — liste publique (non exhaustive) */
+  /** GET /villages?zoneId=... — liste publique ; zoneId optionnel (absent → tous) */
   @Get()
   @Public()
-  @ApiOperation({ summary: "Lister les villages/quartiers d'une zone" })
-  @ApiQuery({ name: 'zoneId', required: true, type: String })
+  @ApiOperation({ summary: 'Lister les villages/quartiers (tous, ou filtrés par zone)' })
+  @ApiQuery({ name: 'zoneId', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   list(@Query() query: ListVillageQuery) {
     return this.villageService.list(query);

@@ -18,11 +18,12 @@ export class RegionService {
     private readonly countryService: CountryService,
   ) {}
 
-  async list(query: ListRegionQuery): Promise<Region[]> {
-    let qb = this.regionRepo
-      .createQueryBuilder('r')
-      .where('r.countryId = :countryId', { countryId: query.countryId })
-      .orderBy('r.name', 'ASC');
+  async list(query: ListRegionQuery = {}): Promise<Region[]> {
+    let qb = this.regionRepo.createQueryBuilder('r').orderBy('r.name', 'ASC');
+
+    if (query.countryId?.trim()) {
+      qb = qb.andWhere('r.countryId = :countryId', { countryId: query.countryId.trim() });
+    }
 
     if (query.search?.trim()) {
       qb = qb.andWhere('r.name LIKE :term', { term: `%${query.search.trim()}%` });

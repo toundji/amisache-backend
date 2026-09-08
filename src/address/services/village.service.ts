@@ -19,11 +19,12 @@ export class VillageService {
     private readonly zoneService: ZoneService,
   ) {}
 
-  async list(query: ListVillageQuery): Promise<Village[]> {
-    let qb = this.villageRepo
-      .createQueryBuilder('v')
-      .where('v.zoneId = :zoneId', { zoneId: query.zoneId })
-      .orderBy('v.name', 'ASC');
+  async list(query: ListVillageQuery = {}): Promise<Village[]> {
+    let qb = this.villageRepo.createQueryBuilder('v').orderBy('v.name', 'ASC');
+
+    if (query.zoneId?.trim()) {
+      qb = qb.andWhere('v.zoneId = :zoneId', { zoneId: query.zoneId.trim() });
+    }
 
     if (query.search?.trim()) {
       qb = qb.andWhere('v.name LIKE :term', { term: `%${query.search.trim()}%` });

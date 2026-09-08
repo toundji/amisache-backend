@@ -51,7 +51,7 @@ export class UpdateVillageDto {
 // ── Requête de liste ─────────────────────────────────────────────
 
 export interface ListVillageQuery {
-  /** Obligatoire côté service — un village référence toujours sa zone */
-  zoneId: string;
+  /** Optionnel : filtre par zone. Absent → tous les villages (back-office). */
+  zoneId?: string;
   search?: string;
 }

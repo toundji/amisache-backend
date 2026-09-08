@@ -31,11 +31,11 @@ import type { ListRegionQuery } from '../dto/region.dto';
 export class RegionController {
   constructor(private readonly regionService: RegionService) {}
 
-  /** GET /regions?countryId=... — liste publique */
+  /** GET /regions?countryId=... — liste publique ; countryId optionnel (absent → toutes) */
   @Get()
   @Public()
-  @ApiOperation({ summary: "Lister les régions d'un pays" })
-  @ApiQuery({ name: 'countryId', required: true, type: String })
+  @ApiOperation({ summary: 'Lister les régions (toutes, ou filtrées par pays)' })
+  @ApiQuery({ name: 'countryId', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   list(@Query() query: ListRegionQuery) {
     return this.regionService.list(query);

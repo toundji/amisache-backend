@@ -36,7 +36,7 @@ export class UpdateRegionDto {
 // ── Requête de liste ─────────────────────────────────────────────
 
 export interface ListRegionQuery {
-  /** Obligatoire côté service — une région appartient toujours à un pays */
-  countryId: string;
+  /** Optionnel : filtre par pays. Absent → toutes les régions (back-office). */
+  countryId?: string;
   search?: string;
 }

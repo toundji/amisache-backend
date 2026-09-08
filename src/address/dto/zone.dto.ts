@@ -36,7 +36,7 @@ export class UpdateZoneDto {
 // ── Requête de liste ─────────────────────────────────────────────
 
 export interface ListZoneQuery {
-  /** Obligatoire côté service — une zone appartient toujours à une région */
-  regionId: string;
+  /** Optionnel : filtre par région. Absent → toutes les zones (back-office). */
+  regionId?: string;
   search?: string;
 }

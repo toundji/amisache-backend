@@ -31,11 +31,11 @@ import type { ListZoneQuery } from '../dto/zone.dto';
 export class ZoneController {
   constructor(private readonly zoneService: ZoneService) {}
 
-  /** GET /zones?regionId=... — liste publique */
+  /** GET /zones?regionId=... — liste publique ; regionId optionnel (absent → toutes) */
   @Get()
   @Public()
-  @ApiOperation({ summary: "Lister les zones d'une région" })
-  @ApiQuery({ name: 'regionId', required: true, type: String })
+  @ApiOperation({ summary: 'Lister les zones (toutes, ou filtrées par région)' })
+  @ApiQuery({ name: 'regionId', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   list(@Query() query: ListZoneQuery) {
     return this.zoneService.list(query);
