@@ -7,14 +7,22 @@
 //
 // Nécessite les migrations déjà appliquées (npm run migration:run).
 //
+// Seeds enchaînés : admin, compte de test (opt-in), types (référence
+// liturgy/community), settings (config app). Le découpage administratif
+// du Bénin a son propre entrypoint (npm run seed:benin) — trop volumineux
+// pour être rejoué à chaque `npm run seed`.
+//
 // Usage :
 //   npm run seed          — idempotent, ne duplique pas les données existantes
-//   npm run seed:refresh  — supprime puis recrée (admin + compte de test si configuré)
+//   npm run seed:refresh  — recrée admin/compte de test, réécrit settings,
+//                           réactive les types (jamais de suppression de type)
 // ============================================================
 import 'dotenv/config';
 import dataSource from './database/data-source';
 import { readSeedAdminConfig, seedAdmin } from './database/seeds/seed-admin';
 import { readSeedTestUserConfig, seedTestUser } from './database/seeds/seed-test-user';
+import { seedTypes } from './database/seeds/seed-types';
+import { seedSettings } from './database/seeds/seed-settings';
 
 async function run(): Promise<void> {
     const refresh = process.argv.includes('--refresh');
@@ -27,6 +35,8 @@ async function run(): Promise<void> {
     try {
         await seedAdmin(dataSource, refresh);
         await seedTestUser(dataSource, refresh);
+        await seedTypes(dataSource, refresh);
+        await seedSettings(dataSource, refresh);
     } finally {
         await dataSource.destroy();
     }
