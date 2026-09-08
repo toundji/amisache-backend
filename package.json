@@ -21,6 +21,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "nest build && node dist/seeder",
     "seed:refresh": "nest build && node dist/seeder --refresh",
+    "seed:benin": "nest build && node dist/seed-benin",
+    "seed:benin:refresh": "nest build && node dist/seed-benin --refresh",
     "migration:generate": "npm run build && npx typeorm -d dist/database/data-source.js migration:generate",
     "migration:run": "npm run build && npx typeorm -d dist/database/data-source.js migration:run",
     "migration:revert": "npm run build && npx typeorm -d dist/database/data-source.js migration:revert",
