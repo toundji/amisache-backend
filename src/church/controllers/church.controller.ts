@@ -21,10 +21,11 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiQuery } from '@ne
 import { FormDataRequest } from 'nestjs-form-data';
 
 import { ChurchService } from '../services/church.service';
-import { Public, Roles } from '../../core/decorators/api.decorator';
+import { ClergyMemberService } from '../services/clergy-member.service';
+import { GetUser, Public, Roles } from '../../core/decorators/api.decorator';
 import { UserRole } from '../../shared/common.enum';
 import { EntityType, ValidationStatus } from '../church.enum';
-import { ImageDto } from '../../shared/media.dto';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 
 // ⚠️ Import de valeur obligatoire (pas `import type`) pour les DTOs utilisés
 // avec @Body() — voir la note équivalente sur users/controllers/user.controller.ts.
@@ -32,6 +33,8 @@ import {
   CreateChurchDto,
   SetPerimeterDto,
   UpdateChurchDto,
+  UpdateChurchImageDto,
+  UpdateChurchPhotosDto,
   UpdateChurchStatusDto,
 } from '../dto/church.dto';
 import type { ListChurchAdminQuery, ListChurchPublicQuery } from '../dto/church.dto';
@@ -39,7 +42,10 @@ import type { ListChurchAdminQuery, ListChurchPublicQuery } from '../dto/church.
 @ApiTags('Church')
 @Controller('churches')
 export class ChurchController {
-  constructor(private readonly churchService: ChurchService) {}
+  constructor(
+    private readonly churchService: ChurchService,
+    private readonly clergyMemberService: ClergyMemberService,
+  ) {}
 
   // ── Public — annuaire ─────────────────────────────────────
 
@@ -99,12 +105,16 @@ export class ChurchController {
 
   // ── Admin — détail par id ─────────────────────────────────
 
-  /** GET /churches/:id — admin, engineer (voit aussi PENDING/SUSPENDED) */
+  /**
+   * GET /churches/:id — admin/engineer, ou membre du clergé ACTIF de cette
+   * église (le panel doit pouvoir afficher la fiche de SA paroisse même en
+   * statut PENDING/SUSPENDED — même garde que les ressources church/:churchId).
+   */
   @Get(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Récupérer une entité par id, quel que soit son statut' })
-  getById(@Param('id') id: string) {
+  @ApiOperation({ summary: 'Récupérer une entité par id, quel que soit son statut (admin, ou clergé de cette église)' })
+  async getById(@GetUser() user: JwtUserInfo, @Param('id') id: string) {
+    await this.clergyMemberService.assertAuthorizedForChurch(user, id);
     return this.churchService.getById(id);
   }
 
@@ -137,15 +147,55 @@ export class ChurchController {
     return this.churchService.setPerimeter(id, body);
   }
 
-  /** POST /churches/:id/banner — admin, engineer */
+  /**
+   * POST /churches/:id/banner — admin/engineer, ou clergé ACTIF de cette
+   * église (contenu de présentation, pas la structure — cf. PATCH /:id).
+   * Vérification faite ici (pas dans ChurchService, qui ne dépend jamais de
+   * ClergyMemberService — c'est l'inverse, cf. clergy-member.service.ts).
+   */
   @Post(':id/banner')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @FormDataRequest()
   @ApiConsumes('multipart/form-data')
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Uploader la photo de bannière' })
-  updateBanner(@Param('id') id: string, @Body() body: ImageDto) {
+  @ApiOperation({ summary: 'Uploader la photo de bannière (admin, ou clergé de cette église)' })
+  async updateBanner(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateChurchImageDto) {
+    await this.clergyMemberService.assertAuthorizedForChurch(user, id);
     return this.churchService.updateBanner(id, body);
+  }
+
+  /** POST /churches/:id/logo — admin/engineer, ou clergé ACTIF de cette église */
+  @Post(':id/logo')
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
+  @FormDataRequest()
+  @ApiConsumes('multipart/form-data')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Uploader le logo (admin, ou clergé de cette église)' })
+  async updateLogo(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateChurchImageDto) {
+    await this.clergyMemberService.assertAuthorizedForChurch(user, id);
+    return this.churchService.updateLogo(id, body);
+  }
+
+  /** POST /churches/:id/photos — admin/engineer, ou clergé ACTIF de cette église */
+  @Post(':id/photos')
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
+  @FormDataRequest()
+  @ApiConsumes('multipart/form-data')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Ajouter une ou plusieurs photos à la galerie (admin, ou clergé de cette église)' })
+  async addPhotos(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateChurchPhotosDto) {
+    await this.clergyMemberService.assertAuthorizedForChurch(user, id);
+    return this.churchService.addPhotos(id, body);
+  }
+
+  /** DELETE /churches/:id/photos — admin/engineer, ou clergé ACTIF de cette église */
+  @Delete(':id/photos')
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Retirer une photo de la galerie (admin, ou clergé de cette église)' })
+  async removePhoto(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: { url: string }) {
+    await this.clergyMemberService.assertAuthorizedForChurch(user, id);
+    return this.churchService.removePhoto(id, body.url);
   }
 
   // ── Admin — suppression ───────────────────────────────────

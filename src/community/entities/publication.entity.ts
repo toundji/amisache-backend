@@ -17,6 +17,7 @@ import { Church } from '../../church/entities/church.entity';
 import { Type } from '../../type/entities/type.entity';
 import { Group } from './group.entity';
 import { PublicationStatus } from '../community.enum';
+import type { Media } from './media.entity';
 
 @Entity('publications')
 export class Publication extends Audit {
@@ -75,6 +76,14 @@ export class Publication extends Audit {
   @ManyToOne(() => Type, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'type_id', referencedColumnName: 'id' })
   type?: Type;
+
+  /**
+   * Non persisté — peuplé par PublicationService via une jointure manuelle
+   * (leftJoinAndMapMany) sur les listes publiques, pour la vignette de la
+   * carte (premier média IMAGE). Pas une relation TypeORM : Media est déjà
+   * le porteur de la FK côté publicationId (§ « Gestion des relations »).
+   */
+  media?: Media[];
 
   /** Code lisible généré à l'insertion (ex: 34-1717000000000) */
   @Column()

@@ -8,13 +8,20 @@ import { Repository } from 'typeorm';
 
 import { Schedule } from '../entities/schedule.entity';
 import { ScheduleFrequency } from '../liturgy.enum';
+import { nextScheduleOccurrence } from '../liturgy.util';
 import { ChurchService } from '../../church/services/church.service';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
 import { TypeService } from '../../type/services/type.service';
 import { TypeScope } from '../../type/type.enum';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
-import { CreateScheduleDto, ListScheduleQuery, UpdateScheduleDto } from '../dto/schedule.dto';
+import {
+  CreateScheduleDto,
+  ListNearbyScheduleQuery,
+  ListScheduleQuery,
+  NearbySchedule,
+  UpdateScheduleDto,
+} from '../dto/schedule.dto';
 
 @Injectable()
 export class ScheduleService {
@@ -48,6 +55,62 @@ export class ScheduleService {
       where: { churchId },
       order: { dayOfWeek: 'ASC', time: 'ASC' },
     });
+  }
+
+  /**
+   * Prochaines célébrations à proximité d'un point, toutes églises
+   * confondues, triées par horaire (§4.11 « Messes autour de vous »).
+   * Bornée à un nombre restreint d'églises candidates (30) pour ne pas
+   * calculer d'occurrences sur un rayon trop large.
+   */
+  async nearby(query: ListNearbyScheduleQuery): Promise<NearbySchedule[]> {
+    const lat = Number(query.lat);
+    const lng = Number(query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new ApiError('lat et lng sont requis et doivent être des nombres.');
+    }
+    const radiusKm = query.radiusKm ? Number(query.radiusKm) : 15;
+    const limit = query.limit ? Math.min(20, Number(query.limit)) : 6;
+
+    const nearbyChurches = await this.churchService.findNearby(lat, lng, radiusKm, 30);
+    if (nearbyChurches.length === 0) return [];
+
+    const churchIds = nearbyChurches.map(({ church }) => church.id);
+    const byChurchId = new Map(nearbyChurches.map((n) => [n.church.id, n]));
+
+    const schedules = await this.scheduleRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.type', 'type')
+      .where('s.churchId IN (:...churchIds)', { churchIds })
+      .getMany();
+
+    const now = new Date();
+    const results: NearbySchedule[] = [];
+
+    for (const schedule of schedules) {
+      const occurrence = nextScheduleOccurrence(schedule, now);
+      if (!occurrence) continue;
+
+      const nearby = byChurchId.get(schedule.churchId);
+      if (!nearby) continue;
+
+      results.push({
+        scheduleId: schedule.id,
+        churchId: nearby.church.id,
+        churchName: nearby.church.name,
+        churchSlug: nearby.church.slug,
+        locality: nearby.church.address?.locality,
+        distanceKm: Math.round(nearby.distanceKm * 10) / 10,
+        time: schedule.time,
+        durationMinutes: schedule.duration,
+        occurrenceAt: occurrence.toISOString(),
+        language: schedule.language,
+        typeName: schedule.type?.name,
+      });
+    }
+
+    results.sort((a, b) => a.occurrenceAt.localeCompare(b.occurrenceAt));
+    return results.slice(0, limit);
   }
 
   async getById(id: string): Promise<Schedule> {

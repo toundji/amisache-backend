@@ -7,7 +7,8 @@
 // Il délègue tout au RequestService.
 // ============================================================
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiQuery } from '@nestjs/swagger';
+import { FormDataRequest } from 'nestjs-form-data';
 
 import { RequestService } from '../services/request.service';
 import { GetUser, Roles } from '../../core/decorators/api.decorator';
@@ -15,7 +16,7 @@ import { UserRole } from '../../shared/common.enum';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import { RequestStatus } from '../liturgy.enum';
 
-import { CreateRequestDto, UpdateRequestStatusDto } from '../dto/request.dto';
+import { CreateRequestDto, RequestAttachmentUploadDto, UpdateRequestStatusDto } from '../dto/request.dto';
 import type { ListRequestQuery } from '../dto/request.dto';
 
 @ApiTags('Liturgy — Demandes')
@@ -72,7 +73,21 @@ export class RequestController {
     return this.requestService.create(user.id, body);
   }
 
-  /** GET /requests/:id — le demandeur lui-même, ou l'admin/engineer */
+  /**
+   * POST /requests/attachment — upload d'une pièce jointe libre (prière,
+   * contenu spécifique — image ou PDF), avant soumission de la demande.
+   * ⚠️ Déclarée AVANT `:id`.
+   */
+  @Post('attachment')
+  @FormDataRequest()
+  @ApiConsumes('multipart/form-data')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Uploader une pièce jointe pour une demande (image ou PDF)" })
+  uploadAttachment(@Body() body: RequestAttachmentUploadDto) {
+    return this.requestService.uploadAttachment(body);
+  }
+
+  /** GET /requests/:id — le demandeur lui-même, le clergé ACTIF de l'église visée, ou l'admin/engineer */
   @Get(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Récupérer une demande par id' })
@@ -82,15 +97,19 @@ export class RequestController {
     );
     return isAdmin
       ? this.requestService.getById(id)
-      : this.requestService.getMineById(id, user.id);
+      : this.requestService.getByIdForRequesterOrClergy(id, user);
   }
 
-  /** PATCH /requests/:id/status — admin, engineer */
+  /** PATCH /requests/:id/status — admin/engineer, ou clergé ACTIF de l'église de cette demande */
   @Patch(':id/status')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "[Admin] Changer le statut d'une demande" })
-  updateStatus(@Param('id') id: string, @Body() body: UpdateRequestStatusDto) {
-    return this.requestService.updateStatus(id, body);
+  @ApiOperation({ summary: "Changer le statut d'une demande (admin, ou clergé de cette église)" })
+  updateStatus(
+    @GetUser() user: JwtUserInfo,
+    @Param('id') id: string,
+    @Body() body: UpdateRequestStatusDto,
+  ) {
+    return this.requestService.updateStatus(user, id, body);
   }
 }

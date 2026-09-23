@@ -115,3 +115,28 @@ export interface ListScheduleQuery {
   /** Obligatoire côté service — un horaire référence toujours son église */
   churchId: string;
 }
+
+export interface ListNearbyScheduleQuery {
+  lat: number;
+  lng: number;
+  /** km — défaut 15 côté service */
+  radiusKm?: number;
+  /** défaut 6, plafonné à 20 côté service */
+  limit?: number;
+}
+
+/** Réponse de GET /schedules/nearby — une occurrence à venir, toutes églises confondues. */
+export interface NearbySchedule {
+  scheduleId: string;
+  churchId: string;
+  churchName: string;
+  churchSlug: string;
+  locality?: string;
+  distanceKm: number;
+  time: string;
+  durationMinutes: number;
+  /** ISO 8601 — instant UTC réel de la prochaine occurrence (voir liturgy.util.ts) */
+  occurrenceAt: string;
+  language?: string;
+  typeName?: string;
+}

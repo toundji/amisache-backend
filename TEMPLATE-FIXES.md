@@ -49,6 +49,44 @@ Une correction va ici **si et seulement si** :
   absente au rechargement ; un non-admin sur ces routes → 403.
 - **Date** : 2026-09-08
 
+### FIX-012 — Guards `APP_GUARD` + `UserAuditInterceptor` plantent silencieusement sur tout contexte WebSocket
+- **Statut** : 🔴 À remonter
+- **Couche/fichier socle** : `core/guards/jwt-auth.guard.ts` (`RequireAuthGuard`,
+  `RequireRoleGuard`, `RequireUserStatusGuard`, `ApiKeyGuard`, `RequireClientTypeGuard`),
+  `core/interceptors/api-audit.ts` (`UserAuditInterceptor`).
+- **Symptôme** : tout `@SubscribeMessage(...)` d'un `WebSocketGateway` échoue avec un
+  générique `{"status":"error","message":"Internal server error"}` (événement `exception`
+  côté client Socket.io), **sans aucune trace exploitable côté serveur** — le
+  `WsExceptionsHandler` par défaut de NestJS n'imprime rien dans les logs, et un
+  `try/catch` posé à l'intérieur du handler lui-même ne capture rien non plus, car
+  l'exception part **avant** que le handler ne soit invoqué.
+- **Cause (deux bugs cumulés, découverts en corrigeant l'un après l'autre)** :
+  1. Les 5 guards ci-dessus sont enregistrés globalement (`APP_GUARD` dans
+     `app.module.ts`) — NestJS les applique donc à **tout** `ExecutionContext`, y compris
+     WebSocket, pas seulement HTTP. Chacun appelle `context.switchToHttp().getRequest()`
+     sans vérifier le type de contexte : pour un contexte WS, cet appel renvoie en
+     réalité le **socket** (premier argument du handler), qui n'a ni `.apikey` ni `.user`
+     — `ApiKeyGuard` lève alors "Invalid API key" avant même d'atteindre le handler.
+  2. Une fois ce premier point corrigé, `UserAuditInterceptor` (`APP_INTERCEPTOR`,
+     lui aussi global) plante à son tour : il appelle `ClsService#set('user', ...)`, mais
+     le contexte CLS (`nestjs-cls`) n'est initialisé que par un middleware HTTP — sur un
+     contexte WS il n'existe simplement pas, d'où `Error: Cannot set the key "user". No
+     CLS context available...`.
+  - Aucun des deux bugs n'était visible avant cette session car **aucun gateway
+    WebSocket n'existait dans le socle avant l'ajout du `ChatGateway` d'Amisache** — les
+    guards/intercepteurs globaux n'avaient jamais été exercés en dehors d'un contexte HTTP.
+- **Correctif** : dans chacun des 5 guards et dans `UserAuditInterceptor`, une garde en
+  toute première ligne — `if (context.getType() !== 'http') return true;` (guards) /
+  `return next.handle();` (interceptor) — avant tout accès à `switchToHttp()`. Un gateway
+  qui a besoin d'authentification WS gère la sienne lui-même (voir `ChatGateway.
+  handleConnection` côté Amisache, hors périmètre de ce fix générique) ; ces guards/cet
+  interceptor HTTP n'ont simplement rien à faire sur un contexte WS.
+- **Piège pour la remontée** : bien vérifier qu'aucun projet dérivé du template n'a de
+  gateway WS qui compterait (par erreur) sur ces guards globaux pour son authentification
+  — le fix les rend no-op sur tout contexte non-HTTP, ce qui est correct tant qu'aucun
+  gateway ne s'y fie, mais casserait silencieusement une telle dépendance si elle existait.
+- **Date** : 2026-09-21
+
 ### FIX-010 — `.gitignore` excluait `src/database/migrations`
 - **Statut** : 🔴 À remonter
 - **Couche/fichier socle** : `.gitignore`, `database/`

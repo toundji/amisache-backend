@@ -58,7 +58,6 @@ classDiagram
         +EntityType type
         +string name
         +string slug
-        +string leaderMessage
         +string bannerPhoto
         +string accentColor
         +string defaultLanguage
@@ -75,6 +74,14 @@ classDiagram
         +EntranceType type
         +string name
         +Point location
+        +uuid churchId
+        +Church church
+    }
+
+    class ChurchProfile {
+        +uuid id
+        +string description
+        +string leaderMessage
         +uuid churchId
         +Church church
     }
@@ -143,6 +150,8 @@ classDiagram
         +string text
         +decimal offering
         +string attachments
+        +string homeAddress
+        +Point homeLocation
         +RequestStatus status
         +uuid churchId
         +Church church
@@ -197,6 +206,16 @@ classDiagram
         +PaymentMethod paymentMethod
         +uuid confirmedById
         +ClergyMember confirmedBy
+    }
+
+    class Tariff {
+        +uuid id
+        +decimal amount
+        +bool active
+        +uuid churchId
+        +Church church
+        +uuid typeId
+        +Type type
     }
 
     %% =========================================================
@@ -270,6 +289,7 @@ classDiagram
     Church "0..1" o-- "*" Church : parent / children
     Church "*" --> "0..1" Country : country (CONFERENCE level)
     Church "1" *-- "1" Address
+    Church "1" o-- "0..1" ChurchProfile : presentation content
     Church "1" *-- "*" Schedule : schedules
     Church "1" *-- "*" Entrance : entrances
 
@@ -279,6 +299,7 @@ classDiagram
     Church "1" o-- "*" ClergyMember : staff
     User "1" o-- "*" ClergyMember : memberships
     Church "1" *-- "*" PaymentMethod : collection accounts
+    Church "1" *-- "*" Tariff : tariffs (own, may be inherited by children)
     Church "1" o-- "*" Publication
     Publication "*" --> "0..1" Group : author
     Publication "1" *-- "*" Media : media
@@ -298,6 +319,7 @@ classDiagram
     Request "*" --> "1" Type : scope=INTENTION/SACRAMENT
     Donation "*" --> "1" Type : scope=DONATION
     Publication "*" --> "1" Type : scope=PUBLICATION
+    Tariff "*" --> "1" Type : scope=INTENTION/SACRAMENT
 
     %% =========================================================
     %%  RELATIONS -- UTILISATEUR

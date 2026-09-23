@@ -72,31 +72,31 @@ export class EntranceController {
     return this.entranceService.getById(id);
   }
 
-  /** POST /entrances — admin, engineer */
+  /** POST /entrances — admin/engineer, ou clergé ACTIF de l'église visée */
   @Post()
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Créer une entrée' })
-  create(@Body() body: CreateEntranceDto) {
-    return this.entranceService.create(body);
+  @ApiOperation({ summary: 'Créer une entrée (admin, ou clergé de cette église)' })
+  create(@GetUser() user: JwtUserInfo, @Body() body: CreateEntranceDto) {
+    return this.entranceService.create(user, body);
   }
 
-  /** PATCH /entrances/:id — admin, engineer */
+  /** PATCH /entrances/:id — admin/engineer, ou clergé ACTIF de l'église de cette entrée */
   @Patch(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Mettre à jour une entrée' })
-  update(@Param('id') id: string, @Body() body: UpdateEntranceDto) {
-    return this.entranceService.update(id, body);
+  @ApiOperation({ summary: 'Mettre à jour une entrée (admin, ou clergé de cette église)' })
+  update(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateEntranceDto) {
+    return this.entranceService.update(user, id, body);
   }
 
-  /** DELETE /entrances/:id — admin, engineer */
+  /** DELETE /entrances/:id — admin/engineer, ou clergé ACTIF de l'église de cette entrée */
   @Delete(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Supprimer une entrée' })
-  delete(@Param('id') id: string) {
-    return this.entranceService.delete(id);
+  @ApiOperation({ summary: 'Supprimer une entrée (admin, ou clergé de cette église)' })
+  delete(@GetUser() user: JwtUserInfo, @Param('id') id: string) {
+    return this.entranceService.delete(user, id);
   }
 }

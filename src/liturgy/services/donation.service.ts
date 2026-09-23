@@ -38,6 +38,7 @@ export class DonationService {
   async listAdmin(query: ListDonationQuery = {}): Promise<Donation[]> {
     return this.donationRepo.find({
       where: query.churchId ? { churchId: query.churchId } : {},
+      relations: { user: true },
       order: { date: 'DESC' },
     });
   }
@@ -51,6 +52,7 @@ export class DonationService {
     await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
     return this.donationRepo.find({
       where: { churchId },
+      relations: { user: true },
       order: { date: 'DESC' },
     });
   }
@@ -64,8 +66,27 @@ export class DonationService {
     return donation;
   }
 
+  /**
+   * Lecture par id pour un compte non admin/engineer : le donateur
+   * lui-même, OU le clergé ACTIF de l'église de ce don (cf.
+   * `RequestService.getByIdForRequesterOrClergy`, même besoin).
+   */
+  async getByIdForDonorOrClergy(id: string, user: JwtUserInfo): Promise<Donation> {
+    const donation = await this.getById(id);
+    if (donation.userId === user.id) return donation;
+    try {
+      await this.clergyMemberService.assertAuthorizedForChurch(user, donation.churchId);
+    } catch {
+      throw new ApiErrorNotFoundById('donations', id); // 404, pas 403 — n'expose pas l'existence
+    }
+    return donation;
+  }
+
   async getById(id: string): Promise<Donation> {
-    const donation = await this.donationRepo.findOne({ where: { id } });
+    const donation = await this.donationRepo.findOne({
+      where: { id },
+      relations: { user: true },
+    });
     if (!donation) throw new ApiErrorNotFoundById('donations', id);
     return donation;
   }

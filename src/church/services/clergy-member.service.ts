@@ -33,6 +33,7 @@ export class ClergyMemberService {
     return this.clergyRepo.find({
       where: {
         ...(query.churchId ? { churchId: query.churchId } : {}),
+        ...(query.userId ? { userId: query.userId } : {}),
         ...(query.activeOnly ? { endDate: IsNull() } : {}),
       },
       relations: { user: true, church: true },
@@ -69,22 +70,34 @@ export class ClergyMemberService {
     return member;
   }
 
-  async create(body: CreateClergyMemberDto): Promise<ClergyMember> {
+  /**
+   * Affecter un membre du clergé/personnel — admin/engineer (toute église),
+   * ou clergé ACTIF de LA église visée (délègue la gestion de son propre
+   * personnel, jamais celui d'une autre église).
+   */
+  async create(user: JwtUserInfo, body: CreateClergyMemberDto): Promise<ClergyMember> {
     await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
     await this.userService.getById(body.userId); // 404 propre si userId invalide
+    await this.assertAuthorizedForChurch(user, body.churchId);
 
     const member = this.clergyRepo.create(body);
     return this.clergyRepo.save(member);
   }
 
-  async update(id: string, body: UpdateClergyMemberDto): Promise<ClergyMember> {
-    await this.getById(id);
+  async update(
+    user: JwtUserInfo,
+    id: string,
+    body: UpdateClergyMemberDto,
+  ): Promise<ClergyMember> {
+    const existing = await this.getById(id);
+    await this.assertAuthorizedForChurch(user, existing.churchId);
     await this.clergyRepo.update(id, body);
     return this.getById(id);
   }
 
-  async delete(id: string): Promise<{ success: boolean }> {
-    await this.getById(id);
+  async delete(user: JwtUserInfo, id: string): Promise<{ success: boolean }> {
+    const existing = await this.getById(id);
+    await this.assertAuthorizedForChurch(user, existing.churchId);
     await this.clergyRepo.delete(id);
     return { success: true };
   }

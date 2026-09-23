@@ -13,12 +13,8 @@ import { Conversation } from '../entities/conversation.entity';
 import { Participant } from '../entities/participant.entity';
 import { Message } from '../entities/message.entity';
 import { Attachment } from '../entities/attachment.entity';
-import {
-  ActorType,
-  AttachmentKind,
-  ConversationMode,
-  ParticipantRole,
-} from '../../shared/common.enum';
+import { ActorType, AttachmentKind, ConversationMode } from '../../shared/common.enum';
+import { ParticipantRole } from '../chat.enum';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { ApiFsUtils } from '../../utils/api-fs';
 import { UserService } from '../../users/services/user.service';
@@ -34,8 +30,13 @@ import {
   SendMessageWithFilesDto,
 } from '../dto/message.dto';
 import { HandoffDto } from '../dto/handoff.dto';
+import { ChatBotService, CHAT_BOT_GREETING } from './chat-bot.service';
+import { ChatRealtimeService } from './chat-realtime.service';
 
 const PREVIEW_MAX_LENGTH = 140;
+
+/** Sujet conventionnel des conversations ouvertes par la bulle publique (visiteurs anonymes). */
+const GUEST_SUBJECT_TYPE = 'guest-widget';
 
 export interface Actor {
   actorId: string;
@@ -53,7 +54,35 @@ export class ChatService {
     private readonly messageRepo: Repository<Message>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly userService: UserService,
+    private readonly chatBotService: ChatBotService,
+    private readonly realtime: ChatRealtimeService,
   ) { }
+
+  /** Résumé léger d'une conversation — payload des événements temps réel de liste. */
+  private toRealtimeSummary(conversation: Pick<
+    Conversation,
+    'id' | 'status' | 'mode' | 'lastMessageAt' | 'lastMessagePreview' | 'lastMessageSenderId'
+  >) {
+    return {
+      id: conversation.id,
+      status: conversation.status,
+      mode: conversation.mode,
+      lastMessageAt: conversation.lastMessageAt,
+      lastMessagePreview: conversation.lastMessagePreview,
+      lastMessageSenderId: conversation.lastMessageSenderId,
+    };
+  }
+
+  private async emitConversationUpdated(conversationId: string): Promise<void> {
+    const conversation = await this.conversationRepo.findOne({
+      where: { id: conversationId },
+    });
+    if (!conversation) return;
+
+    const payload = { conversation: this.toRealtimeSummary(conversation) };
+    this.realtime.emitToConversation(conversationId, 'conversation:updated', payload);
+    this.realtime.emitToAdmins('conversation:updated', payload);
+  }
 
   // ── Validation acteur (voir note polymorphisme du prompt chat) ──
 
@@ -85,6 +114,33 @@ export class ChatService {
       .take(limit);
 
     const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  /**
+   * Toutes les conversations, admin/engineer uniquement — contrairement à
+   * `myConversations`, ne filtre pas par participant. Nécessaire pour que le
+   * panel voie les conversations ouvertes par la bulle publique (visiteur
+   * anonyme, `ActorType.GUEST`) : aucun compte admin/clergé n'y est jamais
+   * participant tant qu'un handoff n'a pas eu lieu, donc `myConversations`
+   * n'en montre jamais aucune.
+   */
+  async listAdmin(query: ListConversationsQuery): Promise<PaginatedConversations> {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+
+    const [data, total] = await this.conversationRepo.findAndCount({
+      order: { lastMessageAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
 
     return {
       data,
@@ -168,6 +224,10 @@ export class ChatService {
       );
     }
 
+    this.realtime.emitToAdmins('conversation:updated', {
+      conversation: this.toRealtimeSummary(conversation),
+    });
+
     return conversation;
   }
 
@@ -204,6 +264,23 @@ export class ChatService {
     return participant;
   }
 
+  /**
+   * Variante booléenne de `getActiveParticipant`, pour l'autorisation de
+   * rejoindre une room Socket.io (ChatGateway) — même critère
+   * d'appartenance (participant actif), sans lever d'erreur : un refus
+   * de jointure socket n'est pas une 404 HTTP, juste un événement `error`
+   * côté client.
+   */
+  async isActiveParticipant(
+    conversationId: string,
+    actorId: string,
+  ): Promise<boolean> {
+    const participant = await this.participantRepo.findOne({
+      where: { conversationId, actorId, leftAt: IsNull() },
+    });
+    return !!participant;
+  }
+
   private async getConversationOrFail(id: string): Promise<Conversation> {
     const conversation = await this.conversationRepo.findOne({ where: { id } });
     if (!conversation) throw new ApiErrorNotFoundById('chat_conversations', id);
@@ -231,10 +308,10 @@ export class ChatService {
     sender: Actor,
     dto: SendMessageDto,
   ): Promise<Message> {
-    await this.getConversationOrFail(conversationId);
+    const conversation = await this.getConversationOrFail(conversationId);
     await this.validateActor(sender);
 
-    return this.dataSource.transaction(async (manager) => {
+    const message = await this.dataSource.transaction(async (manager) => {
       const message = await manager.save(
         manager.create(Message, {
           conversationId,
@@ -267,6 +344,22 @@ export class ChatService {
 
       return message;
     });
+
+    this.realtime.emitToConversation(conversationId, 'message:new', { message });
+    await this.emitConversationUpdated(conversationId);
+
+    // Seul le visiteur (GUEST, bulle publique) doit déclencher une réponse du
+    // bot — jamais un HUMAN : sur ce projet, HUMAN désigne toujours un membre
+    // du clergé/staff répondant via le panel (ChatController), pas le
+    // visiteur (cf. ChatService.sendGuestMessage, toujours GUEST). Avant ce
+    // fix, un membre du clergé qui répondait sans avoir d'abord fait le
+    // handoff (mode toujours BOT) déclenchait le message de repli du bot
+    // juste après sa propre réponse — signalé par l'utilisateur.
+    if (sender.actorType === ActorType.GUEST) {
+      await this.autoReplyIfBot(conversation, dto.body);
+    }
+
+    return message;
   }
 
   // ── Envoi de message + fichiers en une requête (multipart) ────
@@ -278,14 +371,14 @@ export class ChatService {
     sender: Actor,
     dto: SendMessageWithFilesDto,
   ): Promise<Message> {
-    await this.getConversationOrFail(conversationId);
+    const conversation = await this.getConversationOrFail(conversationId);
     await this.validateActor(sender);
 
     const attachments = (dto.files ?? []).map((file) =>
       this.storeAttachmentFile(file, dto.isVoice ? AttachmentKind.AUDIO : undefined),
     );
 
-    return this.dataSource.transaction(async (manager) => {
+    const message = await this.dataSource.transaction(async (manager) => {
       const message = await manager.save(
         manager.create(Message, {
           conversationId,
@@ -320,6 +413,17 @@ export class ChatService {
 
       return message;
     });
+
+    this.realtime.emitToConversation(conversationId, 'message:new', { message });
+    await this.emitConversationUpdated(conversationId);
+
+    // Même règle que sendMessage() ci-dessus — seul le visiteur (GUEST)
+    // déclenche une réponse du bot.
+    if (sender.actorType === ActorType.GUEST) {
+      await this.autoReplyIfBot(conversation, dto.body);
+    }
+
+    return message;
   }
 
   // ── Upload de pièce jointe (image, vidéo, audio/vocal, fichier) ──
@@ -420,7 +524,7 @@ export class ChatService {
 
     if (message.contentDeletedAt) return message; // idempotent
 
-    return this.dataSource.transaction(async (manager) => {
+    const deleted = await this.dataSource.transaction(async (manager) => {
       for (const attachment of message.attachments ?? []) {
         ApiFsUtils.removeFile(ApiFsUtils.urlToPath(attachment.url));
         await manager.delete(Attachment, attachment.id);
@@ -442,15 +546,28 @@ export class ChatService {
 
       return message;
     });
+
+    this.realtime.emitToConversation(message.conversationId, 'message:deleted', {
+      message: deleted,
+    });
+    await this.emitConversationUpdated(message.conversationId);
+
+    return deleted;
   }
 
   // ── Marquer lu ─────────────────────────────────────────────
 
   async markRead(conversationId: string, actorId: string): Promise<void> {
-    const participant = await this.getActiveParticipant(
-      conversationId,
-      actorId,
-    );
+    // Pas de `getActiveParticipant` (qui lève une 404) : un admin/engineer
+    // peut consulter n'importe quelle conversation via `listAdmin`/`getById`
+    // sans jamais en être devenu participant (ex. fil encore uniquement
+    // BOT, ou quitté après un handoff) — dans ce cas, rien à marquer comme
+    // lu pour lui, silencieusement, plutôt qu'une erreur à chaque ouverture.
+    const participant = await this.participantRepo.findOne({
+      where: { conversationId, actorId, leftAt: IsNull() },
+    });
+    if (!participant) return;
+
     const now = new Date();
 
     await this.participantRepo.update(participant.id, { lastReadAt: now });
@@ -459,6 +576,13 @@ export class ChatService {
       { conversationId, senderId: Not(actorId), readAt: IsNull() },
       { readAt: now },
     );
+
+    this.realtime.emitToConversation(conversationId, 'conversation:read', {
+      conversationId,
+      actorId,
+      actorType: participant.actorType,
+      lastReadAt: now,
+    });
   }
 
   // ── Handoff BOT -> AGENT (sans émission système) ──────────
@@ -475,7 +599,7 @@ export class ChatService {
       dto.fromActorId,
     );
 
-    return this.dataSource.transaction(async (manager) => {
+    const agent = await this.dataSource.transaction(async (manager) => {
       await manager.update(Participant, bot.id, { leftAt: new Date() });
 
       const agent = await manager.save(
@@ -493,5 +617,128 @@ export class ChatService {
 
       return agent;
     });
+
+    await this.emitConversationUpdated(conversationId);
+
+    return agent;
+  }
+
+  // ── Réponse automatique (mode BOT) ────────────────────────
+  // Toujours après la transaction du message entrant, jamais dedans — un
+  // échec de génération de réponse (FAQ indisponible, etc.) ne doit jamais
+  // faire échouer l'envoi du message du fidèle/visiteur lui-même.
+
+  private async autoReplyIfBot(
+    conversation: Conversation,
+    incomingBody?: string,
+  ): Promise<void> {
+    if (conversation.mode !== ConversationMode.BOT) return;
+
+    const replyBody = await this.chatBotService.reply(incomingBody);
+    const reply = await this.messageRepo.save(
+      this.messageRepo.create({
+        conversationId: conversation.id,
+        senderType: ActorType.AI,
+        body: replyBody,
+      }),
+    );
+
+    await this.conversationRepo.update(conversation.id, {
+      lastMessageAt: reply.createdAt,
+      lastMessagePreview: this.buildPreviewText(replyBody),
+      // `undefined` serait ignoré par TypeORM (omis du SET) — `null` explicite
+      // nécessaire pour que `lastMessageSenderId` ne reste pas celui du
+      // message entrant (fidèle/visiteur) alors que le dernier message est
+      // désormais celui du bot (senderId nul, comme sur Message lui-même).
+      lastMessageSenderId: null as unknown as string,
+    });
+
+    this.realtime.emitToConversation(conversation.id, 'message:new', {
+      message: reply,
+    });
+    await this.emitConversationUpdated(conversation.id);
+  }
+
+  // ── Bulle publique (visiteur anonyme, ActorType.GUEST) ────
+  // Même noyau (createOrOpen/sendMessage/listMessages) que le chat
+  // authentifié, mais un visiteur n'a pas de compte à valider
+  // (ChatService.validateActor ignore GUEST) et doit rester cantonné à SA
+  // propre conversation — vérifié explicitement ici, jamais supposé.
+
+  /** Ouvre (ou reprend) la conversation BOT d'un visiteur — un salut du bot au premier appel. */
+  async openGuestConversation(guestId: string): Promise<Conversation> {
+    const existing = await this.conversationRepo.findOne({
+      where: { subjectType: GUEST_SUBJECT_TYPE, subjectId: guestId },
+    });
+    if (existing) return existing;
+
+    const conversation = await this.conversationRepo.save(
+      this.conversationRepo.create({
+        subjectType: GUEST_SUBJECT_TYPE,
+        subjectId: guestId,
+        mode: ConversationMode.BOT,
+      }),
+    );
+
+    await this.participantRepo.save(
+      this.participantRepo.create({
+        conversationId: conversation.id,
+        actorId: guestId,
+        actorType: ActorType.GUEST,
+        role: ParticipantRole.OWNER,
+      }),
+    );
+
+    const greeting = await this.messageRepo.save(
+      this.messageRepo.create({
+        conversationId: conversation.id,
+        senderType: ActorType.AI,
+        body: CHAT_BOT_GREETING,
+      }),
+    );
+    await this.conversationRepo.update(conversation.id, {
+      lastMessageAt: greeting.createdAt,
+      lastMessagePreview: this.buildPreviewText(CHAT_BOT_GREETING),
+    });
+
+    this.realtime.emitToAdmins('conversation:updated', {
+      conversation: this.toRealtimeSummary({
+        ...conversation,
+        lastMessageAt: greeting.createdAt,
+        lastMessagePreview: this.buildPreviewText(CHAT_BOT_GREETING),
+      }),
+    });
+
+    return conversation;
+  }
+
+  /** Lève une 404 si `guestId` n'est pas (ou plus) participant actif de `conversationId`. */
+  private async assertGuestOwnsConversation(
+    conversationId: string,
+    guestId: string,
+  ): Promise<void> {
+    await this.getActiveParticipant(conversationId, guestId);
+  }
+
+  async sendGuestMessage(
+    conversationId: string,
+    guestId: string,
+    body: string,
+  ): Promise<Message> {
+    await this.assertGuestOwnsConversation(conversationId, guestId);
+    return this.sendMessage(
+      conversationId,
+      { actorId: guestId, actorType: ActorType.GUEST },
+      { body },
+    );
+  }
+
+  async listGuestMessages(
+    conversationId: string,
+    guestId: string,
+    query: ListMessagesQuery,
+  ): Promise<PaginatedMessages> {
+    await this.assertGuestOwnsConversation(conversationId, guestId);
+    return this.listMessages(conversationId, query);
   }
 }

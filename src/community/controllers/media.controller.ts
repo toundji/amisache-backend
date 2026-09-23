@@ -21,9 +21,10 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiQuery } from '@ne
 import { FormDataRequest } from 'nestjs-form-data';
 
 import { MediaService } from '../services/media.service';
-import { Public, Roles } from '../../core/decorators/api.decorator';
+import { GetUser, Public, Roles } from '../../core/decorators/api.decorator';
 import { UserRole } from '../../shared/common.enum';
 import { ImageVideoDto } from '../../shared/media.dto';
+import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 
 import { AddMediaDto, ListMediaQuery } from '../dto/media.dto';
 
@@ -41,33 +42,37 @@ export class MediaController {
     return this.mediaService.listForPublication(query.publicationId);
   }
 
-  /** POST /media/upload — admin, engineer (fichier avant AddMediaDto, provider=UPLOAD) */
+  /**
+   * POST /media/upload — admin/engineer/clergy (fichier avant AddMediaDto,
+   * provider=UPLOAD). Pas de scoping par église ici : le fichier n'est pas
+   * encore rattaché à une publication, c'est `add` qui vérifie l'église.
+   */
   @Post('upload')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @FormDataRequest()
   @ApiConsumes('multipart/form-data')
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Uploader un fichier média (image/vidéo)' })
+  @ApiOperation({ summary: 'Uploader un fichier média, image ou vidéo (admin, ou clergé)' })
   upload(@Body() body: ImageVideoDto) {
     return this.mediaService.upload(body);
   }
 
-  /** POST /media — admin, engineer */
+  /** POST /media — admin/engineer, ou clergé ACTIF de l'église de la publication visée */
   @Post()
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Rattacher un média à une publication' })
-  add(@Body() body: AddMediaDto) {
-    return this.mediaService.add(body);
+  @ApiOperation({ summary: 'Rattacher un média à une publication (admin, ou clergé de cette église)' })
+  add(@GetUser() user: JwtUserInfo, @Body() body: AddMediaDto) {
+    return this.mediaService.add(user, body);
   }
 
-  /** DELETE /media/:id — admin, engineer */
+  /** DELETE /media/:id — admin/engineer, ou clergé ACTIF de l'église de la publication */
   @Delete(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Supprimer un média' })
-  delete(@Param('id') id: string) {
-    return this.mediaService.delete(id);
+  @ApiOperation({ summary: 'Supprimer un média (admin, ou clergé de cette église)' })
+  delete(@GetUser() user: JwtUserInfo, @Param('id') id: string) {
+    return this.mediaService.delete(user, id);
   }
 }

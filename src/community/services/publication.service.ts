@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Publication } from '../entities/publication.entity';
+import { Media } from '../entities/media.entity';
 import { PublicationStatus } from '../community.enum';
 import { ChurchService } from '../../church/services/church.service';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
@@ -39,10 +40,13 @@ export class PublicationService {
 
     let qb = this.pubRepo
       .createQueryBuilder('p')
+      .leftJoinAndSelect('p.type', 'type')
+      .leftJoinAndMapMany('p.media', Media, 'm', 'm.publicationId = p.id')
       .where('p.status = :status', { status: PublicationStatus.PUBLISHED })
       .andWhere('(p.startDate IS NULL OR p.startDate <= :today)', { today })
       .andWhere('(p.endDate IS NULL OR p.endDate >= :today)', { today })
-      .orderBy('p.publishedAt', 'DESC');
+      .orderBy('p.publishedAt', 'DESC')
+      .addOrderBy('m.createdAt', 'ASC');
 
     if (query.churchId) qb = qb.andWhere('p.churchId = :churchId', { churchId: query.churchId });
     if (query.groupId) qb = qb.andWhere('p.groupId = :groupId', { groupId: query.groupId });
@@ -99,9 +103,18 @@ export class PublicationService {
   async getPublicById(id: string): Promise<Publication> {
     const publication = await this.pubRepo.findOne({
       where: { id, status: PublicationStatus.PUBLISHED },
+      relations: { type: true },
     });
     if (!publication) throw new ApiErrorNotFoundById('publications', id);
+    publication.media = await this.mediaRepoOrderedFor(id);
     return publication;
+  }
+
+  private async mediaRepoOrderedFor(publicationId: string): Promise<Media[]> {
+    return this.pubRepo.manager.find(Media, {
+      where: { publicationId },
+      order: { createdAt: 'ASC' },
+    });
   }
 
   async create(user: JwtUserInfo, body: CreatePublicationDto): Promise<Publication> {

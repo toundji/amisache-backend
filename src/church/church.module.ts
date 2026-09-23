@@ -11,23 +11,26 @@ import { Church } from './entities/church.entity';
 import { Entrance } from './entities/entrance.entity';
 import { ClergyMember } from './entities/clergy-member.entity';
 import { Membership } from './entities/membership.entity';
+import { ChurchProfile } from './entities/church-profile.entity';
 
 import { ChurchService } from './services/church.service';
 import { EntranceService } from './services/entrance.service';
 import { ClergyMemberService } from './services/clergy-member.service';
 import { MembershipService } from './services/membership.service';
+import { ChurchProfileService } from './services/church-profile.service';
 
 import { ChurchController } from './controllers/church.controller';
 import { EntranceController } from './controllers/entrance.controller';
 import { ClergyMemberController } from './controllers/clergy-member.controller';
 import { MembershipController } from './controllers/membership.controller';
+import { ChurchProfileController } from './controllers/church-profile.controller';
 
 import { AddressModule } from '../address/address.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Church, Entrance, ClergyMember, Membership]),
+    TypeOrmModule.forFeature([Church, Entrance, ClergyMember, Membership, ChurchProfile]),
     AddressModule,
     UsersModule,
   ],
@@ -36,8 +39,21 @@ import { UsersModule } from '../users/users.module';
     EntranceController,
     ClergyMemberController,
     MembershipController,
+    ChurchProfileController,
   ],
-  providers: [ChurchService, EntranceService, ClergyMemberService, MembershipService],
-  exports: [ChurchService, EntranceService, ClergyMemberService, MembershipService],
+  providers: [
+    ChurchService,
+    EntranceService,
+    ClergyMemberService,
+    MembershipService,
+    ChurchProfileService,
+  ],
+  exports: [
+    ChurchService,
+    EntranceService,
+    ClergyMemberService,
+    MembershipService,
+    ChurchProfileService,
+  ],
 })
 export class ChurchModule {}

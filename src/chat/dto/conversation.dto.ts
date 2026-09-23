@@ -12,11 +12,8 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import {
-  ActorType,
-  ConversationMode,
-  ParticipantRole,
-} from '../../shared/common.enum';
+import { ActorType, ConversationMode } from '../../shared/common.enum';
+import { ParticipantRole } from '../chat.enum';
 import { Conversation } from '../entities/conversation.entity';
 
 /** Acteur supplémentaire à ajouter à la création (l'appelant est ajouté automatiquement en OWNER) */

@@ -27,6 +27,7 @@ import { Audit } from '../../shared/audit';
 import { Address } from '../../address/entities/address.embeddable';
 import { Country } from '../../address/entities/country.entity';
 import { EntityType, ValidationStatus } from '../church.enum';
+import { polygonTransformer } from '../../shared/geo';
 import type { Polygon } from '../../shared/geo';
 
 @Entity('churches')
@@ -45,11 +46,15 @@ export class Church extends Audit {
   @Column()
   slug!: string;
 
-  @Column({ type: 'text', nullable: true, name: 'leader_message' })
-  leaderMessage?: string;
-
   @Column({ nullable: true, name: 'banner_photo' })
   bannerPhoto?: string;
+
+  @Column({ nullable: true })
+  logo?: string;
+
+  /** Galerie de photos de l'église (URLs) — alimentée via POST /churches/:id/photos */
+  @Column({ type: 'json', nullable: true })
+  photos?: string[];
 
   /** Couleur d'accent propre à l'entité — voir CLAUDE.md « unir sans uniformiser » */
   @Column({ nullable: true, length: 7, name: 'accent_color' })
@@ -71,6 +76,7 @@ export class Church extends Audit {
     nullable: true,
     spatialFeatureType: 'Polygon',
     srid: 4326,
+    transformer: polygonTransformer,
   })
   perimeter?: Polygon;
 

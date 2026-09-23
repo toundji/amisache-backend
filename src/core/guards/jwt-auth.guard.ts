@@ -30,6 +30,13 @@ export class RequireAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Guard HTTP uniquement — un contexte WS (ChatGateway) n'a pas de vraie
+    // requête Express derrière `switchToHttp()` (il renverrait en réalité le
+    // socket) et gère déjà sa propre auth dans `handleConnection`. Sans ce
+    // garde-fou, ce guard globalement enregistré (APP_GUARD) plantait
+    // silencieusement chaque `@SubscribeMessage` du gateway.
+    if (context.getType() !== 'http') return true;
+
     const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
       context.getHandler(),
       context.getClass(),
@@ -88,6 +95,8 @@ export class RequireRoleGuard implements CanActivate {
   canActivate(
     context: ExecutionContext,
   ): boolean | Promise<boolean> | Observable<boolean> {
+    if (context.getType() !== 'http') return true;
+
     const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
       context.getHandler(),
       context.getClass(),
@@ -127,6 +136,8 @@ export class RequireUserStatusGuard implements CanActivate {
   canActivate(
     context: ExecutionContext,
   ): boolean | Promise<boolean> | Observable<boolean> {
+    if (context.getType() !== 'http') return true;
+
     const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
       context.getHandler(),
       context.getClass(),
@@ -182,6 +193,8 @@ export class ApiKeyGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    if (context.getType() !== 'http') return true;
+
     const noKey = this.reflector.getAllAndOverride<boolean>('noKey', [
       context.getHandler(),
       context.getClass(),
@@ -228,6 +241,8 @@ export class RequireClientTypeGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    if (context.getType() !== 'http') return true;
+
     const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
       context.getHandler(),
       context.getClass(),

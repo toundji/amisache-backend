@@ -65,7 +65,7 @@ export class DonationController {
     return this.donationService.create(user.id, body);
   }
 
-  /** GET /donations/:id — le donateur lui-même, ou l'admin/engineer */
+  /** GET /donations/:id — le donateur lui-même, le clergé ACTIF de l'église visée, ou l'admin/engineer */
   @Get(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Récupérer un don par id' })
@@ -75,6 +75,6 @@ export class DonationController {
     );
     return isAdmin
       ? this.donationService.getById(id)
-      : this.donationService.getMineById(id, user.id);
+      : this.donationService.getByIdForDonorOrClergy(id, user);
   }
 }

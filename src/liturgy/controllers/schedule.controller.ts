@@ -25,7 +25,7 @@ import { UserRole } from '../../shared/common.enum';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 
 import { CreateScheduleDto, UpdateScheduleDto } from '../dto/schedule.dto';
-import type { ListScheduleQuery } from '../dto/schedule.dto';
+import type { ListNearbyScheduleQuery, ListScheduleQuery } from '../dto/schedule.dto';
 
 @ApiTags('Liturgy — Horaires')
 @Controller('schedules')
@@ -51,6 +51,22 @@ export class ScheduleController {
   @ApiOperation({ summary: '[Admin] Liste complète des horaires (toutes églises)' })
   listAdmin() {
     return this.scheduleService.listAdmin();
+  }
+
+  /**
+   * GET /schedules/nearby?lat=&lng=&radiusKm=&limit= — prochaines
+   * célébrations à proximité, toutes églises confondues, triées par
+   * horaire. ⚠️ Déclarée AVANT `:id`.
+   */
+  @Get('nearby')
+  @Public()
+  @ApiOperation({ summary: 'Prochaines célébrations à proximité (toutes églises), triées par horaire' })
+  @ApiQuery({ name: 'lat', required: true, type: Number })
+  @ApiQuery({ name: 'lng', required: true, type: Number })
+  @ApiQuery({ name: 'radiusKm', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  nearby(@Query() query: ListNearbyScheduleQuery) {
+    return this.scheduleService.nearby(query);
   }
 
   /**

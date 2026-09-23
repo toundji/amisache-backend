@@ -15,15 +15,14 @@ import { GetUser, Roles } from '../../core/decorators/api.decorator';
 import { UserRole } from '../../shared/common.enum';
 import { PaymentStatus } from '../payment.enum';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
-import { ImageDto } from '../../shared/media.dto';
 
-import { UpdatePaymentStatusDto } from '../dto/payment.dto';
+import { ReceiptUploadDto, UpdatePaymentStatusDto } from '../dto/payment.dto';
 import type { ListPaymentQuery } from '../dto/payment.dto';
 
 @ApiTags('Payment')
 @Controller('payments')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(private readonly paymentService: PaymentService) { }
 
   /**
    * GET /payments/admin — liste complète des paiements, toutes églises.
@@ -86,13 +85,13 @@ export class PaymentController {
     return this.paymentService.confirmOrReject(id, user.id, body.status);
   }
 
-  /** POST /payments/receipt-image — upload du reçu avant soumission */
+  /** POST /payments/receipt-image — upload du reçu avant soumission (image ou PDF) */
   @Post('receipt-image')
   @FormDataRequest()
   @ApiConsumes('multipart/form-data')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Uploader une image de reçu de paiement' })
-  uploadReceiptImage(@Body() body: ImageDto) {
+  @ApiOperation({ summary: 'Uploader un reçu de paiement (image ou PDF)' })
+  uploadReceiptImage(@Body() body: ReceiptUploadDto) {
     return this.paymentService.uploadReceiptImage(body);
   }
 }

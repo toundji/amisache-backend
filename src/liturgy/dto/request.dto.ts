@@ -13,8 +13,24 @@ import {
   IsUUID,
   ValidateNested,
 } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsFile, MaxFileSize, HasExtension, FileSystemStoredFile } from 'nestjs-form-data';
 import { RequestStatus } from '../liturgy.enum';
 import { SubmitPaymentDto } from '../../payment/dto/payment.dto';
+import { LocationDto } from '../../address/dto/address.dto';
+
+/**
+ * Pièce jointe libre d'une demande — une prière, un contenu spécifique à
+ * transmettre à la paroisse (image OU PDF), distincte du reçu de paiement
+ * (`payment/dto/payment.dto.ts::ReceiptUploadDto`, sémantique différente).
+ */
+export class RequestAttachmentUploadDto {
+  @ApiProperty({ required: true, type: 'string', format: 'binary' })
+  @IsFile()
+  @MaxFileSize(10e6)
+  @HasExtension(['png', 'jpg', 'jpeg', 'pdf'])
+  attachment!: FileSystemStoredFile;
+}
 
 export class CreateRequestDto {
   /** Doit être une occurrence valide de `scheduleId` si renseigné (§4.6) */
@@ -33,6 +49,19 @@ export class CreateRequestDto {
   @IsString()
   @IsOptional()
   attachments?: string;
+
+  /** Adresse libre du domicile — présente seulement si la célébration a lieu
+   *  à domicile plutôt qu'à l'église (n'importe quel motif peut être demandé
+   *  à domicile, ce n'est pas un Type à part). */
+  @IsString()
+  @IsOptional()
+  homeAddress?: string;
+
+  /** Position GPS optionnelle du domicile — best-effort, jamais requise */
+  @ValidateNested()
+  @TransformType(() => LocationDto)
+  @IsOptional()
+  homeLocation?: LocationDto;
 
   @IsUUID()
   churchId!: string;

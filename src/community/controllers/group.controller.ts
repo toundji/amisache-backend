@@ -54,6 +54,17 @@ export class GroupController {
   }
 
   /**
+   * GET /groups/stats — comptage public par type, toutes églises
+   * approuvées confondues. ⚠️ Déclarée AVANT `:id`.
+   */
+  @Get('stats')
+  @Public()
+  @ApiOperation({ summary: 'Comptage des groupes par type (toutes églises approuvées)' })
+  stats() {
+    return this.groupService.stats();
+  }
+
+  /**
    * GET /groups/church/:churchId — groupes d'UNE église.
    * Accès : admin/engineer, ou membre du clergé ACTIF de cette église.
    */

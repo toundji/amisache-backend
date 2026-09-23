@@ -26,9 +26,9 @@ import {
 import { FormDataRequest } from 'nestjs-form-data';
 
 import { ChatService } from '../services/chat.service';
-import { GetUser } from '../../core/decorators/api.decorator';
+import { GetUser, Roles } from '../../core/decorators/api.decorator';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
-import { ActorType } from '../../shared/common.enum';
+import { ActorType, UserRole } from '../../shared/common.enum';
 import { AttachmentUploadDto } from '../../shared/media.dto';
 
 import { CreateConversationDto } from '../dto/conversation.dto';
@@ -70,6 +70,23 @@ export class ChatController {
     @Query() query: ListConversationsQuery,
   ) {
     return this.chatService.myConversations(user.id, query);
+  }
+
+  /**
+   * GET /chat/conversations/admin
+   * Toutes les conversations (admin/engineer) — pas seulement celles où
+   * l'appelant est participant. Nécessaire pour que le panel voie les
+   * conversations ouvertes par la bulle publique (visiteur anonyme, jamais
+   * participant d'un compte admin/clergé avant un handoff). Déclarée avant
+   * `:id` pour ne pas être interceptée par ce paramètre.
+   */
+  @Get('admin')
+  @Roles(UserRole.admin, UserRole.engineer)
+  @ApiOperation({ summary: 'Lister toutes les conversations (admin/engineer)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  listAdmin(@Query() query: ListConversationsQuery) {
+    return this.chatService.listAdmin(query);
   }
 
   /**

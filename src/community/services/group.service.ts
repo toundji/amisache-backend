@@ -7,8 +7,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Group } from '../entities/group.entity';
+import { GroupType } from '../community.enum';
 import { ChurchService } from '../../church/services/church.service';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
+import { ValidationStatus } from '../../church/church.enum';
 import { ApiErrorNotFoundById } from '../../utils/api-error';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import { CreateGroupDto, ListGroupQuery, UpdateGroupDto } from '../dto/group.dto';
@@ -41,6 +43,25 @@ export class GroupService {
     await this.churchService.getById(churchId);
     await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
     return this.groupRepo.find({ where: { churchId }, order: { name: 'ASC' } });
+  }
+
+  /**
+   * Comptage public par type de groupe, toutes églises approuvées
+   * confondues — alimente le bloc « Rejoindre un groupe » de la home
+   * (pas d'endpoint de recherche multi-églises complet pour l'instant,
+   * seulement cet agrégat).
+   */
+  async stats(): Promise<{ type: GroupType; count: number }[]> {
+    const rows = await this.groupRepo
+      .createQueryBuilder('g')
+      .innerJoin('churches', 'c', 'c.id = g.church_id')
+      .select('g.type', 'type')
+      .addSelect('COUNT(*)', 'count')
+      .where('c.status = :status', { status: ValidationStatus.APPROVED })
+      .groupBy('g.type')
+      .getRawMany<{ type: GroupType; count: string }>();
+
+    return rows.map((r) => ({ type: r.type, count: Number(r.count) }));
   }
 
   async getById(id: string): Promise<Group> {

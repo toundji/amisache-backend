@@ -113,20 +113,23 @@ export enum ConversationMode {
   AGENT = 'AGENT',
 }
 
-/** Décide comment résoudre actorId/senderId — voir note polymorphisme du prompt chat */
+/**
+ * Décide comment résoudre actorId/senderId — voir note polymorphisme du prompt chat.
+ * GUEST : visiteur anonyme (widget public, pas de compte) — actorId est alors un
+ * identifiant généré côté client (UUID persistant en local), jamais résolu contre
+ * `users` (contrairement à HUMAN, dont l'existence est vérifiée — voir
+ * ChatService.validateActor). Reste dans shared/ (pas chat.enum.ts) : un visiteur
+ * anonyme est un concept générique, utile à tout projet dérivé du même socle.
+ */
 export enum ActorType {
   HUMAN = 'HUMAN',
+  GUEST = 'GUEST',
   AI = 'AI',
   SYSTEM = 'SYSTEM',
 }
 
-export enum ParticipantRole {
-  OWNER = 'OWNER',
-  MEMBER = 'MEMBER',
-  ASSIGNED_AGENT = 'ASSIGNED_AGENT',
-  CLIENT = 'CLIENT',
-  DRIVER = 'DRIVER',
-}
+// ParticipantRole est propre au métier Amisache (fidèle/clergé) — voir
+// chat/chat.enum.ts, pas ici (shared/ reste neutre, cf. CLAUDE.md § Architecture).
 
 export enum MessageKind {
   TEXT = 'TEXT',

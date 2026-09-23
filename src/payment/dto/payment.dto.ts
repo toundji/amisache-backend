@@ -5,7 +5,24 @@
 // même temps qu'elles (voir liturgy/services/*.service.ts).
 // ============================================================
 import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsPositive, IsString, IsUUID } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsFile, MaxFileSize, HasExtension, FileSystemStoredFile } from 'nestjs-form-data';
 import { PaymentOperator, PaymentStatus } from '../payment.enum';
+
+/**
+ * Reçu de paiement — image OU PDF (capture d'écran de transaction, souvent
+ * un PDF pour un reçu bancaire). Dédiée à ce module plutôt que de
+ * réutiliser `shared/media.dto.ts::ImageDto` (png/jpg/jpeg uniquement,
+ * partagée par d'autres usages — avatar, logo... — qui ne doivent pas
+ * accepter un PDF).
+ */
+export class ReceiptUploadDto {
+  @ApiProperty({ required: true, type: 'string', format: 'binary' })
+  @IsFile()
+  @MaxFileSize(10e6)
+  @HasExtension(['png', 'jpg', 'jpeg', 'pdf'])
+  image!: FileSystemStoredFile;
+}
 
 /**
  * Informations de paiement fournies par le fidèle à la soumission

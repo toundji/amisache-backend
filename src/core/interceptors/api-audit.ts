@@ -42,6 +42,14 @@ export class UserAuditInterceptor implements NestInterceptor {
   constructor(private readonly cls: ClsService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    // Interceptor HTTP uniquement — le contexte CLS (nestjs-cls) n'est
+    // initialisé que pour les requêtes HTTP (ClsMiddleware). Un handler WS
+    // (ChatGateway, @SubscribeMessage) n'a aucun contexte CLS actif : y
+    // appeler `cls.set()` lève "No CLS context available" et fait planter
+    // silencieusement le handler avant même son exécution (piège déjà
+    // rencontré avec les guards globaux — voir jwt-auth.guard.ts).
+    if (context.getType() !== 'http') return next.handle();
+
     const request = context.switchToHttp().getRequest();
     const user = request.user;
     this.cls.set('user', user);

@@ -11,14 +11,17 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Schedule } from './entities/schedule.entity';
 import { Request } from './entities/request.entity';
 import { Donation } from './entities/donation.entity';
+import { Tariff } from './entities/tariff.entity';
 
 import { ScheduleService } from './services/schedule.service';
 import { RequestService } from './services/request.service';
 import { DonationService } from './services/donation.service';
+import { TariffService } from './services/tariff.service';
 
 import { ScheduleController } from './controllers/schedule.controller';
 import { RequestController } from './controllers/request.controller';
 import { DonationController } from './controllers/donation.controller';
+import { TariffController } from './controllers/tariff.controller';
 
 import { ChurchModule } from '../church/church.module';
 import { TypeModule } from '../type/type.module';
@@ -26,13 +29,13 @@ import { PaymentModule } from '../payment/payment.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Schedule, Request, Donation]),
+    TypeOrmModule.forFeature([Schedule, Request, Donation, Tariff]),
     ChurchModule,
     TypeModule,
     PaymentModule,
   ],
-  controllers: [ScheduleController, RequestController, DonationController],
-  providers: [ScheduleService, RequestService, DonationService],
-  exports: [ScheduleService, RequestService, DonationService],
+  controllers: [ScheduleController, RequestController, DonationController, TariffController],
+  providers: [ScheduleService, RequestService, DonationService, TariffService],
+  exports: [ScheduleService, RequestService, DonationService, TariffService],
 })
 export class LiturgyModule {}

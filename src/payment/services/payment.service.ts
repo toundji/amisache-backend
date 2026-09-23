@@ -15,9 +15,8 @@ import { ChurchService } from '../../church/services/church.service';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { ApiFsUtils } from '../../utils/api-fs';
-import { ImageDto } from '../../shared/media.dto';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
-import { ListPaymentQuery, SubmitPaymentDto } from '../dto/payment.dto';
+import { ListPaymentQuery, ReceiptUploadDto, SubmitPaymentDto } from '../dto/payment.dto';
 
 @Injectable()
 export class PaymentService {
@@ -135,12 +134,16 @@ export class PaymentService {
     return this.getById(id);
   }
 
-  /** Upload du reçu (image) avant soumission d'une Donation/Request avec paiement */
-  async uploadReceiptImage(body: ImageDto): Promise<{ url: string }> {
+  /** Upload du reçu (image ou PDF) avant soumission d'une Donation/Request avec paiement */
+  async uploadReceiptImage(body: ReceiptUploadDto): Promise<{ url: string }> {
     const image = body.image;
     const dir = ApiFsUtils.createDir('receipts');
     const key = `${Date.now()}${Math.ceil(Math.random() * 100)}`;
-    const path = `${dir}/receipt_${key}.${image['fileType']['ext']}`;
+    // `.extension` (getter de FileSystemStoredFile) retombe sur l'extension du
+    // nom de fichier d'origine quand la détection par magic number échoue —
+    // `image['fileType']['ext']` plante dès que `fileType` est `undefined`
+    // (observé en production sur un PDF), `.extension` ne plante jamais.
+    const path = `${dir}/receipt_${key}.${image.extension}`;
 
     ApiFsUtils.saveFile(image.path, path);
     return { url: ApiFsUtils.pathToUrl(path) };

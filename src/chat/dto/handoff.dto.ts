@@ -4,7 +4,8 @@
 // N'émet aucun message SYSTEM (hors périmètre de ce lot).
 // ============================================================
 import { IsEnum, IsUUID } from 'class-validator';
-import { ActorType, ParticipantRole } from '../../shared/common.enum';
+import { ActorType } from '../../shared/common.enum';
+import { ParticipantRole } from '../chat.enum';
 
 export class HandoffDto {
   /** actorId du participant BOT actuel (celui qui reçoit leftAt) */

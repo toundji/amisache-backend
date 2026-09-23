@@ -5,9 +5,11 @@
 import {
   IsBoolean,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
+  Min,
   MaxLength,
 } from 'class-validator';
 import { TypeScope } from '../type.enum';
@@ -23,6 +25,20 @@ export class CreateTypeDto {
 
   @IsEnum(TypeScope, { message: 'Scope invalide.' })
   scope!: TypeScope;
+
+  /** Pertinent seulement pour INTENTION/SACRAMENT — ignoré sinon */
+  @IsBoolean()
+  @IsOptional()
+  allowHomeCelebration?: boolean;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  minLeadDays?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  requiresScheduleMatch?: boolean;
 }
 
 export class UpdateTypeDto {
@@ -38,6 +54,19 @@ export class UpdateTypeDto {
   @IsBoolean()
   @IsOptional()
   active?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  allowHomeCelebration?: boolean;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  minLeadDays?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  requiresScheduleMatch?: boolean;
 }
 
 // ── Requêtes de liste ────────────────────────────────────────────

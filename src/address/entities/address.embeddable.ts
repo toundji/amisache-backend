@@ -14,6 +14,7 @@
 // objet-valeur embarqué, aucun risque de collision de nom.
 // ============================================================
 import { Column } from 'typeorm';
+import { pointTransformer } from '../../shared/geo';
 import type { Point } from '../../shared/geo';
 
 export class Address {
@@ -31,6 +32,7 @@ export class Address {
     nullable: true,
     spatialFeatureType: 'Point',
     srid: 4326,
+    transformer: pointTransformer,
   })
   location?: Point;
 

@@ -1,8 +1,9 @@
 // ============================================================
 // AMISACHE — clergy-member.controller.ts
 // Routes /clergy-members/*  : lecture publique (le clergé d'une église
-// est une info de la page publique) + gestion réservée à l'admin/engineer
-// (affecter/retirer un membre du clergé n'est pas du self-service).
+// est une info de la page publique) + écriture réservée à l'admin/engineer
+// (toute église) ou au clergé ACTIF de l'église visée (délègue la gestion
+// de son propre personnel, jamais celui d'une autre église).
 //
 // Ce controller ne contient AUCUNE logique métier.
 // Il délègue tout au ClergyMemberService.
@@ -34,11 +35,12 @@ import type { ListClergyMemberQuery } from '../dto/clergy-member.dto';
 export class ClergyMemberController {
   constructor(private readonly clergyMemberService: ClergyMemberService) {}
 
-  /** GET /clergy-members?churchId=...&activeOnly=true — churchId optionnel (absent → toutes) */
+  /** GET /clergy-members?churchId=...&userId=...&activeOnly=true — filtres optionnels */
   @Get()
   @Public()
-  @ApiOperation({ summary: 'Lister les affectations du clergé/personnel (toutes, ou pour une église)' })
+  @ApiOperation({ summary: 'Lister les affectations du clergé/personnel (toutes, pour une église, ou pour un utilisateur)' })
   @ApiQuery({ name: 'churchId', required: false, type: String })
+  @ApiQuery({ name: 'userId', required: false, type: String })
   @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
   list(@Query() query: ListClergyMemberQuery) {
     return this.clergyMemberService.list(query);
@@ -81,31 +83,31 @@ export class ClergyMemberController {
     return this.clergyMemberService.getById(id);
   }
 
-  /** POST /clergy-members — admin, engineer */
+  /** POST /clergy-members — admin/engineer (toute église), ou clergé ACTIF de l'église visée */
   @Post()
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Affecter un membre du clergé/personnel à une église' })
-  create(@Body() body: CreateClergyMemberDto) {
-    return this.clergyMemberService.create(body);
+  @ApiOperation({ summary: "Affecter un membre du clergé/personnel à une église (admin, ou clergé de cette église)" })
+  create(@GetUser() user: JwtUserInfo, @Body() body: CreateClergyMemberDto) {
+    return this.clergyMemberService.create(user, body);
   }
 
-  /** PATCH /clergy-members/:id — admin, engineer */
+  /** PATCH /clergy-members/:id — admin/engineer, ou clergé ACTIF de l'église de cette affectation */
   @Patch(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "[Admin] Mettre à jour une affectation (ex: mettre fin via endDate)" })
-  update(@Param('id') id: string, @Body() body: UpdateClergyMemberDto) {
-    return this.clergyMemberService.update(id, body);
+  @ApiOperation({ summary: "Mettre à jour une affectation, ex: mettre fin via endDate (admin, ou clergé de cette église)" })
+  update(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateClergyMemberDto) {
+    return this.clergyMemberService.update(user, id, body);
   }
 
-  /** DELETE /clergy-members/:id — admin uniquement */
+  /** DELETE /clergy-members/:id — admin/engineer, ou clergé ACTIF de l'église de cette affectation */
   @Delete(':id')
-  @Roles(UserRole.admin)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Supprimer une affectation' })
-  delete(@Param('id') id: string) {
-    return this.clergyMemberService.delete(id);
+  @ApiOperation({ summary: 'Supprimer une affectation (admin, ou clergé de cette église)' })
+  delete(@GetUser() user: JwtUserInfo, @Param('id') id: string) {
+    return this.clergyMemberService.delete(user, id);
   }
 }

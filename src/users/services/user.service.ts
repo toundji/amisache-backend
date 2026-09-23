@@ -42,6 +42,8 @@ const USER_SAFE_SELECT = {
   status: true,
   roles: true,
   idCountry: true,
+  phone: true,
+  homeChurchId: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -101,6 +103,19 @@ export class UserService {
     });
     if (!user) throw new ApiErrorNotFoundById('users', id);
     return user;
+  }
+
+  /**
+   * Recherche par email EXACT, projection minimale — voir
+   * `UserController.lookupByEmail`. `null` si aucun compte ne correspond
+   * (pas une 404 : un "non trouvé" est un résultat de recherche normal ici,
+   * pas une erreur).
+   */
+  async lookupByEmail(email: string): Promise<Pick<User, 'id' | 'firstName' | 'lastName' | 'email' | 'profile'> | null> {
+    return this.userRepo.findOne({
+      where: { email: email?.trim().toLowerCase() },
+      select: { id: true, firstName: true, lastName: true, email: true, profile: true },
+    });
   }
 
   /**
@@ -266,7 +281,10 @@ export class UserService {
     if (image) {
       const dir = ApiFsUtils.createDir('profiles');
       const key = `${Date.now()}${Math.ceil(Math.random() * 100)}`;
-      const path = `${dir}/prof_${key}.${image['fileType']['ext']}`;
+      // `.extension` retombe sur l'extension du nom d'origine si la détection
+      // par magic number échoue — `image['fileType']['ext']` plante dès que
+      // `fileType` est `undefined` (cf. payment.service.ts, même correctif).
+      const path = `${dir}/prof_${key}.${image.extension}`;
 
       ApiFsUtils.saveFile(image.path, path);
 

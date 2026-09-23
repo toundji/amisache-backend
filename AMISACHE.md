@@ -180,11 +180,33 @@ Conséquence TypeORM : **un embedded ne porte pas de relation `@ManyToOne`**. Do
 Réutilisé pour le chat fidèle ⇄ membre du clergé. Le modèle générique (`chat-model.mermaid`)
 convient tel quel ; les adaptations sont **légères et ciblées**.
 
-- **À adapter — uniquement les enums d'acteurs** : `ParticipantRole` (`DRIVER`/`CLIENT`/
-  `ASSIGNED_AGENT` → `FAITHFUL`/`CLERGY`, en gardant `OWNER`/`MEMBER`).
-- **Inchangés** : `ActorType` (`HUMAN`/`AI`/`SYSTEM`), `ConversationMode` (`BOT`/`AGENT`).
-  L'**assistant** (rangé dans `content/`) devient le mode `BOT` de ce chat, avec handoff
-  `BOT → AGENT` vers un `ClergyMember`.
+- **Adapté (2026-09-20)** : `ParticipantRole` (`DRIVER`/`CLIENT`/`ASSIGNED_AGENT` →
+  `FAITHFUL`/`CLERGY`, `OWNER`/`MEMBER` gardés) — **déplacé dans `chat/chat.enum.ts`**,
+  pas laissé dans `shared/common.enum.ts` comme envisagé initialement ici : ce sont des
+  noms de rôle propres au métier Amisache (fidèle/clergé), et `shared/` doit rester
+  neutre pour un autre projet dérivé du même socle (`CLAUDE.md` § Architecture). `chat/`
+  est le seul consommateur (DTOs, entité `Participant`, service) — aucune autre
+  dépendance à ajuster.
+- **`ActorType` étendu** (reste dans `shared/common.enum.ts`, contrairement à
+  `ParticipantRole` — un visiteur anonyme est un concept générique, pas propre à
+  Amisache) : `HUMAN`/`AI`/`SYSTEM` d'origine **+ `GUEST`**, pour la bulle de chat
+  publique (`/chat/guest/*`, voir plus bas) — un visiteur sans compte, jamais résolu
+  contre `users` (contrairement à `HUMAN`).
+- **`ConversationMode`** (`BOT`/`AGENT`) inchangé. Le **bot** n'est **pas** un LLM (décision
+  explicite, cf. `EVOLUTION.md`) : `ChatBotService` (`chat/services/chat-bot.service.ts`)
+  répond par correspondance de mots-clés contre les FAQ déjà publiées (`content/Faq`),
+  avec un message de repli sinon. Handoff `BOT → AGENT` vers un `ClergyMember` déjà
+  prévu par `ChatService.handoff` (socle, inchangé).
+- **Bulle publique (`/chat/guest/*`, nouveau contrôleur `ChatGuestController`)** — le
+  chat doit être utilisable **avant même la création d'un compte** (décision explicite,
+  portail). Identité = `guestId`, UUID généré et persisté côté client
+  (`localStorage`, jamais un `User`), `ActorType.GUEST` ⇒ `ChatService.validateActor`
+  ne cherche aucun `User` correspondant. Chaque route vérifie explicitement que
+  `guestId` est bien participant actif de la conversation demandée (404 sinon, jamais
+  403 — même discipline que `getMineById`) : un visiteur ne doit jamais pouvoir lire la
+  conversation d'un autre en devinant un id. `subjectType='guest-widget'` +
+  `subjectId=guestId` rend `POST /chat/guest/conversations` idempotent — rouvrir le
+  widget reprend le même fil, pas de doublon de salut.
 
 > ⚠️ **RÈGLE DURE — ne pas casser le polymorphisme.** `chat/` reste **agnostique du métier** :
 > il référence ses sujets par `subjectType` + `subjectId` et ses acteurs par `senderType`/

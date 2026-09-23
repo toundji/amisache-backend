@@ -14,9 +14,11 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  IsUrl,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+import { FileSystemStoredFile, HasMimeType, IsFile, IsFiles, MaxFileSize } from 'nestjs-form-data';
 import { EntityType, ValidationStatus } from '../church.enum';
 import { AddressDto } from '../../address/dto/address.dto';
 import { Church } from '../entities/church.entity';
@@ -37,10 +39,6 @@ export class CreateChurchDto {
   @IsOptional()
   @MaxLength(160)
   slug?: string;
-
-  @IsString()
-  @IsOptional()
-  leaderMessage?: string;
 
   @IsHexColor({ message: 'accentColor doit être une couleur hexadécimale (#RRGGBB).' })
   @IsOptional()
@@ -76,10 +74,6 @@ export class UpdateChurchDto {
   @IsOptional()
   @MaxLength(160)
   slug?: string;
-
-  @IsString()
-  @IsOptional()
-  leaderMessage?: string;
 
   @IsHexColor({ message: 'accentColor doit être une couleur hexadécimale (#RRGGBB).' })
   @IsOptional()
@@ -139,4 +133,33 @@ export interface PaginatedChurches {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// ── Bannière / logo / photos — fichier OU lien direct ─────────────
+// Le panel doit pouvoir soit uploader un fichier, soit coller un lien déjà
+// hébergé ailleurs (ex. Wikimedia Commons, cf. EVOLUTION.md — les photos de
+// démonstration ont toujours été des liens externes, jamais des fichiers
+// uploadés). `ChurchService` valide qu'au moins l'un des deux est fourni.
+
+export class UpdateChurchImageDto {
+  @IsFile()
+  @HasMimeType(['image/png', 'image/jpeg'])
+  @IsOptional()
+  image?: FileSystemStoredFile;
+
+  @IsUrl()
+  @IsOptional()
+  imageUrl?: string;
+}
+
+export class UpdateChurchPhotosDto {
+  @IsFiles()
+  @MaxFileSize(20e6, { each: true })
+  @HasMimeType(['image/png', 'image/jpeg'], { each: true })
+  @IsOptional()
+  images?: FileSystemStoredFile[];
+
+  @IsUrl({}, { each: true })
+  @IsOptional()
+  photoUrls?: string[];
 }

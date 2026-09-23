@@ -62,8 +62,9 @@ export class EntranceService {
     return entrance;
   }
 
-  async create(body: CreateEntranceDto): Promise<Entrance> {
+  async create(user: JwtUserInfo, body: CreateEntranceDto): Promise<Entrance> {
     await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
+    await this.clergyMemberService.assertAuthorizedForChurch(user, body.churchId);
 
     const entrance = this.entranceRepo.create({
       type: body.type,
@@ -74,8 +75,9 @@ export class EntranceService {
     return this.entranceRepo.save(entrance);
   }
 
-  async update(id: string, body: UpdateEntranceDto): Promise<Entrance> {
-    await this.getById(id);
+  async update(user: JwtUserInfo, id: string, body: UpdateEntranceDto): Promise<Entrance> {
+    const existing = await this.getById(id);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, existing.churchId);
 
     const { location, ...rest } = body;
     const patch: Partial<Entrance> = { ...rest };
@@ -85,8 +87,9 @@ export class EntranceService {
     return this.getById(id);
   }
 
-  async delete(id: string): Promise<{ success: boolean }> {
-    await this.getById(id);
+  async delete(user: JwtUserInfo, id: string): Promise<{ success: boolean }> {
+    const existing = await this.getById(id);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, existing.churchId);
     await this.entranceRepo.delete(id);
     return { success: true };
   }

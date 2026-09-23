@@ -16,9 +16,16 @@ import { ClergyMemberService } from '../../church/services/clergy-member.service
 import { TypeService } from '../../type/services/type.service';
 import { TypeScope } from '../../type/type.enum';
 import { PaymentService } from '../../payment/services/payment.service';
+import { TariffService } from './tariff.service';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
+import { ApiFsUtils } from '../../utils/api-fs';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
-import { CreateRequestDto, ListRequestQuery, UpdateRequestStatusDto } from '../dto/request.dto';
+import {
+  CreateRequestDto,
+  ListRequestQuery,
+  RequestAttachmentUploadDto,
+  UpdateRequestStatusDto,
+} from '../dto/request.dto';
 
 @Injectable()
 export class RequestService {
@@ -29,6 +36,7 @@ export class RequestService {
     private readonly scheduleService: ScheduleService,
     private readonly typeService: TypeService,
     private readonly paymentService: PaymentService,
+    private readonly tariffService: TariffService,
   ) {}
 
   async listMine(userId: string): Promise<Request[]> {
@@ -46,6 +54,7 @@ export class RequestService {
         ...(query.churchId ? { churchId: query.churchId } : {}),
         ...(query.status ? { status: query.status } : {}),
       },
+      relations: { user: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -66,6 +75,7 @@ export class RequestService {
         churchId,
         ...(query.status ? { status: query.status } : {}),
       },
+      relations: { user: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -79,18 +89,69 @@ export class RequestService {
     return request;
   }
 
+  /**
+   * Lecture par id pour un compte non admin/engineer : le demandeur
+   * lui-même, OU le clergé ACTIF de l'église de cette demande (doit pouvoir
+   * ouvrir le détail d'une demande qui lui est adressée, pas seulement la
+   * lister — cf. `RequestController.getById`).
+   */
+  async getByIdForRequesterOrClergy(id: string, user: JwtUserInfo): Promise<Request> {
+    const request = await this.getById(id);
+    if (request.userId === user.id) return request;
+    try {
+      await this.clergyMemberService.assertAuthorizedForChurch(user, request.churchId);
+    } catch {
+      throw new ApiErrorNotFoundById('requests', id); // 404, pas 403 — n'expose pas l'existence
+    }
+    return request;
+  }
+
   async getById(id: string): Promise<Request> {
-    const request = await this.requestRepo.findOne({ where: { id } });
+    const request = await this.requestRepo.findOne({
+      where: { id },
+      relations: { user: true, church: true, type: true, payment: true },
+    });
     if (!request) throw new ApiErrorNotFoundById('requests', id);
     return request;
   }
 
   async create(userId: string, body: CreateRequestDto): Promise<Request> {
     await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
-    await this.typeService.assertScope(body.typeId, [
+    const type = await this.typeService.assertScope(body.typeId, [
       TypeScope.INTENTION,
       TypeScope.SACRAMENT,
     ]);
+
+    // Célébration à domicile — seuls les types explicitement éligibles
+    // (Type.allowHomeCelebration, réglé depuis le panel) peuvent la demander.
+    if (body.homeAddress && !type.allowHomeCelebration) {
+      throw new ApiError(
+        `« ${type.name} » ne peut pas être célébré à domicile — merci de choisir une célébration à l'église.`,
+      );
+    }
+
+    // Délai minimum avant la date souhaitée — variable par type (mariage,
+    // baptême... demandent plus de préparation qu'une intention simple).
+    const minDate = this.addDays(this.today(), type.minLeadDays);
+    if (body.date < minDate) {
+      throw new ApiError(
+        type.minLeadDays > 0
+          ? `« ${type.name} » doit être demandé au moins ${type.minLeadDays} jour(s) avant la date souhaitée.`
+          : `La date souhaitée ne peut pas être antérieure à aujourd'hui.`,
+      );
+    }
+
+    // La date doit correspondre à une messe déjà programmée par cette
+    // paroisse — seulement si le type l'exige ET que la paroisse a
+    // effectivement publié un horaire (sinon la date reste libre).
+    if (type.requiresScheduleMatch) {
+      const schedules = await this.scheduleService.list({ churchId: body.churchId });
+      if (schedules.length > 0 && !schedules.some((s) => isValidScheduleOccurrence(s, body.date))) {
+        throw new ApiError(
+          'La date choisie ne correspond à aucune messe déjà programmée par cette paroisse — merci de choisir une date de son horaire publié.',
+        );
+      }
+    }
 
     if (body.scheduleId) {
       const schedule = await this.scheduleService.getById(body.scheduleId);
@@ -106,7 +167,15 @@ export class RequestService {
 
     let paymentId: string | undefined;
     if (body.payment) {
-      const payment = await this.paymentService.submit(body.payment, body.churchId);
+      // Un tarif défini (par cette église, ou par repli hiérarchique — voir
+      // TariffService.resolve) prime toujours sur le montant envoyé par le
+      // client : ce dernier ne doit jamais pouvoir imposer son propre prix
+      // quand l'église en a publié un.
+      const tariff = await this.tariffService.resolve(body.churchId, body.typeId);
+      const payment = await this.paymentService.submit(
+        tariff ? { ...body.payment, amount: tariff.amount } : body.payment,
+        body.churchId,
+      );
       paymentId = payment.id;
     }
 
@@ -115,6 +184,10 @@ export class RequestService {
       text: body.text,
       offering: body.offering?.toFixed(2),
       attachments: body.attachments,
+      homeAddress: body.homeAddress,
+      homeLocation: body.homeLocation
+        ? { type: 'Point', coordinates: [body.homeLocation.lng, body.homeLocation.lat] }
+        : undefined,
       churchId: body.churchId,
       userId,
       scheduleId: body.scheduleId,
@@ -124,8 +197,39 @@ export class RequestService {
     return this.requestRepo.save(request);
   }
 
-  async updateStatus(id: string, body: UpdateRequestStatusDto): Promise<{ success: boolean }> {
-    await this.getById(id);
+  /** Date du jour au format YYYY-MM-DD (comparable directement à `Request.date`, une simple chaîne). */
+  private today(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  private addDays(dateStr: string, days: number): string {
+    const date = new Date(`${dateStr}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Upload d'une pièce jointe libre (prière, contenu spécifique — image ou
+   * PDF) avant soumission de la demande. Distinct du reçu de paiement (voir
+   * payment/services/payment.service.ts::uploadReceiptImage).
+   */
+  async uploadAttachment(body: RequestAttachmentUploadDto): Promise<{ url: string }> {
+    const file = body.attachment;
+    const dir = ApiFsUtils.createDir('request-attachments');
+    const key = `${Date.now()}${Math.ceil(Math.random() * 100)}`;
+    const path = `${dir}/attachment_${key}.${file.extension}`;
+
+    ApiFsUtils.saveFile(file.path, path);
+    return { url: ApiFsUtils.pathToUrl(path) };
+  }
+
+  async updateStatus(
+    user: JwtUserInfo,
+    id: string,
+    body: UpdateRequestStatusDto,
+  ): Promise<{ success: boolean }> {
+    const existing = await this.getById(id);
+    await this.clergyMemberService.assertAuthorizedForChurch(user, existing.churchId);
     await this.requestRepo.update(id, { status: body.status as RequestStatus });
     return { success: true };
   }

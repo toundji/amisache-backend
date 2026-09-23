@@ -7,7 +7,8 @@
 import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { Audit } from '../../shared/audit';
 import { Conversation } from './conversation.entity';
-import { ActorType, ParticipantRole } from '../../shared/common.enum';
+import { ActorType } from '../../shared/common.enum';
+import { ParticipantRole } from '../chat.enum';
 
 @Entity('chat_participants')
 @Index(['actorId', 'leftAt'])

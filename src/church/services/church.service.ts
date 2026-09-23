@@ -10,10 +10,10 @@ import { Repository } from 'typeorm';
 import { Church } from '../entities/church.entity';
 import { EntityType, ValidationStatus } from '../church.enum';
 import { CountryService } from '../../address/services/country.service';
+import { Village } from '../../address/entities/village.entity';
 import { toAddressEntity } from '../../address/address.mapper';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { ApiFsUtils } from '../../utils/api-fs';
-import { ImageDto } from '../../shared/media.dto';
 import type { Polygon } from '../../shared/geo';
 import {
   CreateChurchDto,
@@ -22,6 +22,8 @@ import {
   PaginatedChurches,
   SetPerimeterDto,
   UpdateChurchDto,
+  UpdateChurchImageDto,
+  UpdateChurchPhotosDto,
 } from '../dto/church.dto';
 
 // Ordre décroissant des niveaux « composites » (hors CHURCH/CHAPEL, qui
@@ -76,7 +78,10 @@ export class ChurchService {
     if (query.type) qb = qb.andWhere('c.type = :type', { type: query.type });
     if (query.parentId) qb = qb.andWhere('c.parentId = :parentId', { parentId: query.parentId });
     if (query.search?.trim()) {
-      qb = qb.andWhere('c.name LIKE :term', { term: `%${query.search.trim()}%` });
+      const term = `%${query.search.trim()}%`;
+      qb = qb
+        .leftJoin(Village, 'v', 'v.id = c.address.villageId')
+        .andWhere('(c.name LIKE :term OR c.address.locality LIKE :term OR v.name LIKE :term)', { term });
     }
 
     const [data, total] = await qb.getManyAndCount();
@@ -96,6 +101,36 @@ export class ChurchService {
     });
     if (!church) throw new ApiErrorNotFoundById('churches', slug);
     return church;
+  }
+
+  /**
+   * Églises approuvées et géolocalisées dans un rayon donné, triées par
+   * distance croissante — fondation de la « découverte de proximité »
+   * (§4.11). `ST_Distance_Sphere` renvoie des mètres, converti en km ; le
+   * filtre de rayon passe par `HAVING` (pas `WHERE`) car MySQL ne permet
+   * pas de référencer un alias de SELECT ailleurs qu'en HAVING/ORDER BY.
+   */
+  async findNearby(
+    lat: number,
+    lng: number,
+    radiusKm: number,
+    limit: number,
+  ): Promise<{ church: Church; distanceKm: number }[]> {
+    const { entities, raw } = await this.churchRepo
+      .createQueryBuilder('c')
+      .addSelect(
+        "ST_Distance_Sphere(c.location, ST_GeomFromText(CONCAT('POINT(', :lng, ' ', :lat, ')'), 4326)) / 1000",
+        'distanceKm',
+      )
+      .where('c.status = :status', { status: ValidationStatus.APPROVED })
+      .andWhere('c.location IS NOT NULL')
+      .having('distanceKm <= :radiusKm')
+      .orderBy('distanceKm', 'ASC')
+      .limit(limit)
+      .setParameters({ lat, lng, radiusKm })
+      .getRawAndEntities();
+
+    return entities.map((church, i) => ({ church, distanceKm: Number(raw[i].distanceKm) }));
   }
 
   // ── Création / mise à jour ────────────────────────────────
@@ -160,22 +195,80 @@ export class ChurchService {
 
   // ── Bannière ───────────────────────────────────────────────
 
-  async updateBanner(id: string, body: ImageDto): Promise<Church> {
+  /** Fichier uploadé (sauvegardé sur disque) OU lien déjà hébergé ailleurs — au choix du panel. */
+  async updateBanner(id: string, body: UpdateChurchImageDto): Promise<Church> {
     const church = await this.getById(id);
-    const image = body.image;
-    if (image) {
-      const dir = ApiFsUtils.createDir('churches');
-      const key = `${Date.now()}${Math.ceil(Math.random() * 100)}`;
-      const path = `${dir}/banner_${key}.${image['fileType']['ext']}`;
-
-      ApiFsUtils.saveFile(image.path, path);
-
-      const url = ApiFsUtils.pathToUrl(path);
+    const url = this.resolveImageUrl('banner', body);
+    if (url) {
       church.bannerPhoto = url;
       await this.churchRepo.update(id, { bannerPhoto: url });
     }
 
     return church;
+  }
+
+  // ── Logo ───────────────────────────────────────────────────
+
+  async updateLogo(id: string, body: UpdateChurchImageDto): Promise<Church> {
+    const church = await this.getById(id);
+    const url = this.resolveImageUrl('logo', body);
+    if (url) {
+      church.logo = url;
+      await this.churchRepo.update(id, { logo: url });
+    }
+
+    return church;
+  }
+
+  /**
+   * Sauvegarde le fichier uploadé et renvoie son URL, ou renvoie directement
+   * `imageUrl` si fourni à la place — jamais aucun des deux (`ApiError`, le
+   * panel doit choisir explicitement un mode, pas un silence sans effet).
+   */
+  private resolveImageUrl(prefix: string, body: UpdateChurchImageDto): string {
+    if (body.imageUrl) return body.imageUrl;
+    if (!body.image) {
+      throw new ApiError('Fournir un fichier ou un lien.');
+    }
+    const dir = ApiFsUtils.createDir('churches');
+    const key = `${Date.now()}${Math.ceil(Math.random() * 100)}`;
+    // `.extension` retombe sur l'extension du nom d'origine si la détection
+    // par magic number échoue — `image['fileType']['ext']` plante dès que
+    // `fileType` est `undefined` (cf. payment.service.ts, même correctif).
+    const path = `${dir}/${prefix}_${key}.${body.image.extension}`;
+    ApiFsUtils.saveFile(body.image.path, path);
+    return ApiFsUtils.pathToUrl(path);
+  }
+
+  // ── Galerie de photos ──────────────────────────────────────
+
+  /**
+   * Ajoute une ou plusieurs photos à la galerie (n'écrase pas les
+   * existantes) — fichiers uploadés et/ou liens déjà hébergés ailleurs,
+   * combinables dans le même appel.
+   */
+  async addPhotos(id: string, body: UpdateChurchPhotosDto): Promise<Church> {
+    const church = await this.getById(id);
+    const dir = ApiFsUtils.createDir('churches');
+
+    const uploadedUrls = (body.images ?? []).map((image) => {
+      const key = `${Date.now()}${Math.ceil(Math.random() * 100)}`;
+      const path = `${dir}/photo_${key}.${image.extension}`;
+      ApiFsUtils.saveFile(image.path, path);
+      return ApiFsUtils.pathToUrl(path);
+    });
+
+    const photos = [...(church.photos ?? []), ...uploadedUrls, ...(body.photoUrls ?? [])];
+    await this.churchRepo.update(id, { photos });
+    return this.getById(id);
+  }
+
+  /** Retire une photo de la galerie par son URL */
+  async removePhoto(id: string, url: string): Promise<Church> {
+    const church = await this.getById(id);
+    const photos = (church.photos ?? []).filter((p) => p !== url);
+    await this.churchRepo.update(id, { photos });
+    return this.getById(id);
   }
 
   // ── Règles métier privées ─────────────────────────────────

@@ -19,6 +19,8 @@ import { Schedule } from './schedule.entity';
 import { Type } from '../../type/entities/type.entity';
 import { Payment } from '../../payment/entities/payment.entity';
 import { RequestStatus } from '../liturgy.enum';
+import { pointTransformer } from '../../shared/geo';
+import type { Point } from '../../shared/geo';
 
 @Entity('requests')
 export class Request extends Audit {
@@ -38,6 +40,27 @@ export class Request extends Audit {
   /** URL(s) de pièces jointes — libre, encodage à la charge du client */
   @Column({ type: 'text', nullable: true })
   attachments?: string;
+
+  // ─── Célébration à domicile (optionnelle) ───────────────────
+  // N'importe quelle intention/sacrement peut être demandé à domicile plutôt
+  // qu'à l'église — pas un Type à part : une simple adresse jointe à la
+  // demande, quel que soit le motif choisi.
+
+  /** Adresse libre du domicile — repère local, pas un objet Address complet
+   *  (pas de Zone obligatoire à faire choisir pour une demande ponctuelle). */
+  @Column({ type: 'text', nullable: true, name: 'home_address' })
+  homeAddress?: string;
+
+  /** Position GPS optionnelle du domicile (capture navigateur, best-effort) */
+  @Column({
+    type: 'point',
+    nullable: true,
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    transformer: pointTransformer,
+    name: 'home_location',
+  })
+  homeLocation?: Point;
 
   @Column({ type: 'enum', enum: RequestStatus, default: RequestStatus.SUBMITTED })
   status!: RequestStatus;

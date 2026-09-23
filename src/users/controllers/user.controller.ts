@@ -153,6 +153,24 @@ export class UserController {
     return this.userService.listUsers(query);
   }
 
+  /**
+   * GET /users/lookup?email=...
+   * Recherche ciblée par email EXACT — ni liste, ni pagination, ni recherche
+   * partielle. Ouvert à `clergy` (contrairement à `GET /users`, réservé
+   * admin/manager/engineer) pour retrouver un compte existant à affecter à
+   * sa propre église (`ClergyMember`), sans exposer tout l'annuaire de la
+   * plateforme. `null` si aucun compte ne correspond.
+   * ⚠️ Déclarée AVANT `:id` (sinon NestJS lit "lookup" comme un id).
+   */
+  @Get('lookup')
+  @Roles(UserRole.admin, UserRole.manager, UserRole.engineer, UserRole.clergy)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Rechercher un utilisateur par email exact (admin, ou clergé pour affecter du personnel)' })
+  @ApiQuery({ name: 'email', required: true, type: String })
+  lookupByEmail(@Query('email') email: string) {
+    return this.userService.lookupByEmail(email);
+  }
+
   // ── Admin — lecture unitaire ──────────────────────────────
 
   /**

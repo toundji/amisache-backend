@@ -13,7 +13,7 @@ import {
 import { Audit } from '../../shared/audit';
 import { Church } from './church.entity';
 import { EntranceType } from '../church.enum';
-import type { Point } from '../../shared/geo';
+import { pointTransformer, type Point } from '../../shared/geo';
 
 @Entity('entrances')
 export class Entrance extends Audit {
@@ -26,7 +26,7 @@ export class Entrance extends Audit {
   @Column()
   name!: string;
 
-  @Column({ type: 'point', spatialFeatureType: 'Point', srid: 4326 })
+  @Column({ type: 'point', spatialFeatureType: 'Point', srid: 4326, transformer: pointTransformer })
   location!: Point;
 
   // ─── Relation : Church ──────────────────────────────────────

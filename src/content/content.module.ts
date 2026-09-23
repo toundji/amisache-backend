@@ -14,22 +14,25 @@ import { MailModule } from '../mail/mail.module';
 import { ContactMessage } from './entities/contact-message.entity';
 import { Faq } from './entities/faq.entity';
 import { Setting } from './entities/setting.entity';
+import { LiturgicalPeriod } from './entities/liturgical-period.entity';
 
 import { ContactController } from './controllers/contact.controller';
 import { FaqController } from './controllers/faq.controller';
 import { SettingController } from './controllers/setting.controller';
+import { LiturgicalPeriodController } from './controllers/liturgical-period.controller';
 
 import { ContactService } from './services/contact.service';
 import { FaqService } from './services/faq.service';
 import { SettingService } from './services/setting.service';
+import { LiturgicalPeriodService } from './services/liturgical-period.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ContactMessage, Faq, Setting]),
+    TypeOrmModule.forFeature([ContactMessage, Faq, Setting, LiturgicalPeriod]),
     MailModule,
   ],
-  controllers: [ContactController, FaqController, SettingController],
-  providers: [ContactService, FaqService, SettingService],
-  exports: [ContactService, FaqService, SettingService],
+  controllers: [ContactController, FaqController, SettingController, LiturgicalPeriodController],
+  providers: [ContactService, FaqService, SettingService, LiturgicalPeriodService],
+  exports: [ContactService, FaqService, SettingService, LiturgicalPeriodService],
 })
 export class ContentModule {}

@@ -523,10 +523,18 @@ export class AuthService {
     user: User,
     clientType?: ApiClientType,
   ): Promise<void> {
-    const adminRoles = [UserRole.admin, UserRole.manager, UserRole.engineer];
+    // clergy inclus : le panel back-office (amisache-panel) sert aussi bien
+    // l'admin plateforme que le clergé, chacun scopé à son périmètre côté
+    // panel (RoleGuard + ClergyContextService) — voir EVOLUTION.md.
+    const backOfficeRoles = [
+      UserRole.admin,
+      UserRole.manager,
+      UserRole.engineer,
+      UserRole.clergy,
+    ];
 
     if (clientType === ApiClientType.back_office) {
-      if (!adminRoles.some((r) => user.roles?.includes(r))) {
+      if (!backOfficeRoles.some((r) => user.roles?.includes(r))) {
         throw new ApiError('Access denied. Admin access required.', {
           code: HttpStatus.FORBIDDEN,
         });

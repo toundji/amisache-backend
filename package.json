@@ -41,9 +41,11 @@
     "@nestjs/event-emitter": "^12.0.0",
     "@nestjs/jwt": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/platform-socket.io": "^12.0.4",
     "@nestjs/schedule": "^12.0.1",
     "@nestjs/swagger": "^12.0.1",
     "@nestjs/typeorm": "^12.0.1",
+    "@nestjs/websockets": "^12.0.4",
     "argon2": "^0.45.1",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.3.4",
@@ -64,6 +66,7 @@
     "reflect-metadata": "^0.2.2",
     "request-ip": "^3.3.0",
     "rxjs": "^7.8.2",
+    "socket.io": "^4.8.3",
     "typeorm": "^1.1.1"
   },
   "devDependencies": {
