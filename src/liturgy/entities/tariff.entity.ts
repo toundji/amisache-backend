@@ -18,7 +18,7 @@ import {
 } from 'typeorm';
 import { Audit } from '../../shared/audit';
 import { Church } from '../../church/entities/church.entity';
-import { Type } from '../../type/entities/type.entity';
+import { RequestType } from './request-type.entity';
 
 @Entity('tariffs')
 @Index(['churchId', 'typeId'], { unique: true })
@@ -26,8 +26,17 @@ export class Tariff extends Audit {
   static entityName = 'tariffs';
   static entityCode = '39';
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
-  amount!: string;
+  /** Offrande — null : cette église ne fixe que le délai, le montant se résout plus haut. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  amount?: string | null;
+
+  /**
+   * Délai minimum (jours) avant la date souhaitée — null : se résout plus
+   * haut dans la hiérarchie, puis `Type.minLeadDays` (défaut plateforme).
+   * Résolu indépendamment du montant — voir TariffService.resolveMinLeadDays.
+   */
+  @Column({ name: 'min_lead_days', type: 'int', nullable: true })
+  minLeadDays?: number | null;
 
   /** Désactivé = ignoré par la résolution (comme s'il n'existait pas). */
   @Column({ default: true })
@@ -44,16 +53,16 @@ export class Tariff extends Audit {
   @JoinColumn({ name: 'church_id', referencedColumnName: 'id' })
   church?: Church;
 
-  // ─── Relation : Type (intention ou sacrement tarifé) ────────
+  // ─── Relation : RequestType (intention ou sacrement tarifé) ─
   // ⚠️ typeId est en LECTURE SEULE — modifier via type: { id } as any
 
   @Index()
   @Column({ name: 'type_id' })
   typeId!: string;
 
-  @ManyToOne(() => Type, { onDelete: 'CASCADE' })
+  @ManyToOne(() => RequestType, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'type_id', referencedColumnName: 'id' })
-  type?: Type;
+  type?: RequestType;
 
   /** Code lisible généré à l'insertion (ex: 39-1717000000000) */
   @Column()

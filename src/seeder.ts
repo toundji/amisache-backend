@@ -30,6 +30,7 @@ import dataSource from './database/data-source';
 import { readSeedAdminConfig, seedAdmin } from './database/seeds/seed-admin';
 import { readSeedTestUserConfig, seedTestUser } from './database/seeds/seed-test-user';
 import { seedTypes } from './database/seeds/seed-types';
+import { seedRequestTypes } from './database/seeds/seed-request-types';
 import { seedSettings } from './database/seeds/seed-settings';
 import { seedChurches } from './database/seeds/seed-churches';
 import { seedLiturgicalPeriods } from './database/seeds/seed-liturgical-periods';
@@ -50,6 +51,7 @@ async function run(): Promise<void> {
         await seedAdmin(dataSource, refresh);
         await seedTestUser(dataSource, refresh);
         await seedTypes(dataSource, refresh);
+        await seedRequestTypes(dataSource, refresh);
         await seedSettings(dataSource, refresh);
         // Nécessite `npm run seed:benin` déjà joué (zones du Bénin) — no-op sinon.
         await seedChurches(dataSource, refresh);

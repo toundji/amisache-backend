@@ -40,6 +40,6 @@ import { WebSocketAuthMiddleware } from '../core/middleware/api-middleware';
     ChatGateway,
     WebSocketAuthMiddleware, // scaffolding du socle, jusqu'ici jamais instancié — voir ChatGateway
   ],
-  exports: [ChatService],
+  exports: [ChatService, ChatBotService, ChatRealtimeService],
 })
 export class ChatModule {}

@@ -1,8 +1,8 @@
 // ============================================================
 // AMISACHE — request.entity.ts
 // Demande UNIFIÉE : intention de messe et sacrement, discriminées par
-// le scope du Type lié (INTENTION / SACRAMENT). Voir cahier-des-charges
-// §4.6.
+// le scope du RequestType lié (INTENTION / SACRAMENT) — table dédiée,
+// voir request-type.entity.ts. Voir cahier-des-charges §4.6.
 // ============================================================
 import {
   Entity,
@@ -16,7 +16,7 @@ import { Audit } from '../../shared/audit';
 import { Church } from '../../church/entities/church.entity';
 import { User } from '../../users/entities/user.entity';
 import { Schedule } from './schedule.entity';
-import { Type } from '../../type/entities/type.entity';
+import { RequestType } from './request-type.entity';
 import { Payment } from '../../payment/entities/payment.entity';
 import { RequestStatus } from '../liturgy.enum';
 import { pointTransformer } from '../../shared/geo';
@@ -97,16 +97,16 @@ export class Request extends Audit {
   @JoinColumn({ name: 'schedule_id', referencedColumnName: 'id' })
   schedule?: Schedule;
 
-  // ─── Relation : Type (scope=INTENTION ou SACRAMENT) ─────────
+  // ─── Relation : RequestType (intention ou sacrement) ────────
   // ⚠️ typeId est en LECTURE SEULE — modifier via type: { id } as any
 
   @Index()
   @Column({ name: 'type_id' })
   typeId!: string;
 
-  @ManyToOne(() => Type, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => RequestType, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'type_id', referencedColumnName: 'id' })
-  type?: Type;
+  type?: RequestType;
 
   // ─── Relation : Payment (offrande, optionnelle) ─────────────
   // ⚠️ paymentId est en LECTURE SEULE — modifier via payment: { id } as any

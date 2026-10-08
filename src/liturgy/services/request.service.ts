@@ -13,8 +13,8 @@ import { isValidScheduleOccurrence } from '../liturgy.util';
 import { ScheduleService } from './schedule.service';
 import { ChurchService } from '../../church/services/church.service';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
-import { TypeService } from '../../type/services/type.service';
-import { TypeScope } from '../../type/type.enum';
+import { RequestTypeService } from './request-type.service';
+import { RequestType } from '../entities/request-type.entity';
 import { PaymentService } from '../../payment/services/payment.service';
 import { TariffService } from './tariff.service';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
@@ -34,7 +34,7 @@ export class RequestService {
     private readonly churchService: ChurchService,
     private readonly clergyMemberService: ClergyMemberService,
     private readonly scheduleService: ScheduleService,
-    private readonly typeService: TypeService,
+    private readonly requestTypeService: RequestTypeService,
     private readonly paymentService: PaymentService,
     private readonly tariffService: TariffService,
   ) {}
@@ -54,7 +54,7 @@ export class RequestService {
         ...(query.churchId ? { churchId: query.churchId } : {}),
         ...(query.status ? { status: query.status } : {}),
       },
-      relations: { user: true },
+      relations: { user: true, type: true, schedule: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -75,7 +75,7 @@ export class RequestService {
         churchId,
         ...(query.status ? { status: query.status } : {}),
       },
-      relations: { user: true },
+      relations: { user: true, type: true, schedule: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -115,12 +115,17 @@ export class RequestService {
     return request;
   }
 
-  async create(userId: string, body: CreateRequestDto): Promise<Request> {
+  /**
+   * Règles métier d'une nouvelle demande (église, scope du type, domicile,
+   * délai, correspondance horaire) — sans rien enregistrer. Partagé par
+   * `create` et l'assistant du chat (tool `prepare_request`), qui doit
+   * refuser exactement les mêmes demandes que le formulaire.
+   */
+  async validate(
+    body: Pick<CreateRequestDto, 'churchId' | 'typeId' | 'date' | 'scheduleId' | 'homeAddress'>,
+  ): Promise<RequestType> {
     await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
-    const type = await this.typeService.assertScope(body.typeId, [
-      TypeScope.INTENTION,
-      TypeScope.SACRAMENT,
-    ]);
+    const type = await this.requestTypeService.getById(body.typeId); // 404 propre si typeId invalide
 
     // Célébration à domicile — seuls les types explicitement éligibles
     // (Type.allowHomeCelebration, réglé depuis le panel) peuvent la demander.
@@ -130,13 +135,15 @@ export class RequestService {
       );
     }
 
-    // Délai minimum avant la date souhaitée — variable par type (mariage,
-    // baptême... demandent plus de préparation qu'une intention simple).
-    const minDate = this.addDays(this.today(), type.minLeadDays);
+    // Délai minimum avant la date souhaitée — fixé par la paroisse (ou un
+    // ancêtre), sinon celui du type (mariage, baptême... demandent plus de
+    // préparation qu'une intention simple).
+    const { minLeadDays } = await this.tariffService.resolveMinLeadDays(body.churchId, type);
+    const minDate = this.addDays(this.today(), minLeadDays);
     if (body.date < minDate) {
       throw new ApiError(
-        type.minLeadDays > 0
-          ? `« ${type.name} » doit être demandé au moins ${type.minLeadDays} jour(s) avant la date souhaitée.`
+        minLeadDays > 0
+          ? `« ${type.name} » doit être demandé au moins ${minLeadDays} jour(s) avant la date souhaitée.`
           : `La date souhaitée ne peut pas être antérieure à aujourd'hui.`,
       );
     }
@@ -164,6 +171,11 @@ export class RequestService {
         );
       }
     }
+    return type;
+  }
+
+  async create(userId: string, body: CreateRequestDto): Promise<Request> {
+    await this.validate(body);
 
     let paymentId: string | undefined;
     if (body.payment) {

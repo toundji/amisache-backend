@@ -54,7 +54,7 @@ export class ScheduleController {
   }
 
   /**
-   * GET /schedules/nearby?lat=&lng=&radiusKm=&limit= — prochaines
+   * GET /schedules/nearby?lat=&lng=&radiusKm=&limit=&typeId= — prochaines
    * célébrations à proximité, toutes églises confondues, triées par
    * horaire. ⚠️ Déclarée AVANT `:id`.
    */
@@ -65,6 +65,7 @@ export class ScheduleController {
   @ApiQuery({ name: 'lng', required: true, type: Number })
   @ApiQuery({ name: 'radiusKm', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'typeId', required: false, type: String })
   nearby(@Query() query: ListNearbyScheduleQuery) {
     return this.scheduleService.nearby(query);
   }

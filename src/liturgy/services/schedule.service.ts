@@ -2,7 +2,7 @@
 // AMISACHE — schedule.service.ts
 // Horaires liturgiques récurrents.
 // ============================================================
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -10,6 +10,7 @@ import { Schedule } from '../entities/schedule.entity';
 import { ScheduleFrequency } from '../liturgy.enum';
 import { nextScheduleOccurrence } from '../liturgy.util';
 import { ChurchService } from '../../church/services/church.service';
+import type { Church } from '../../church/entities/church.entity';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
 import { TypeService } from '../../type/services/type.service';
 import { TypeScope } from '../../type/type.enum';
@@ -33,6 +34,12 @@ export class ScheduleService {
   ) {}
 
   async list(query: ListScheduleQuery): Promise<Schedule[]> {
+    // churchId manquant → TypeORM plante sur un where undefined (500 opaque) au lieu
+    // d'une 400 propre — arrivé en production via un appel panel sans churchId
+    // (corrigé pour appeler /schedules/admin), gardé ici pour toute autre source.
+    if (!query.churchId) {
+      throw new ApiError('churchId est requis.', { code: HttpStatus.BAD_REQUEST });
+    }
     return this.scheduleRepo.find({
       where: { churchId: query.churchId },
       order: { dayOfWeek: 'ASC', time: 'ASC' },
@@ -62,6 +69,9 @@ export class ScheduleService {
    * confondues, triées par horaire (§4.11 « Messes autour de vous »).
    * Bornée à un nombre restreint d'églises candidates (30) pour ne pas
    * calculer d'occurrences sur un rayon trop large.
+   * Sans `radiusKm` : aucune limite de distance — églises géolocalisées (100
+   * plus proches) + églises sans localisation (distanceKm null), qui sinon
+   * n'apparaîtraient jamais.
    */
   async nearby(query: ListNearbyScheduleQuery): Promise<NearbySchedule[]> {
     const lat = Number(query.lat);
@@ -69,20 +79,26 @@ export class ScheduleService {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       throw new ApiError('lat et lng sont requis et doivent être des nombres.');
     }
-    const radiusKm = query.radiusKm ? Number(query.radiusKm) : 15;
-    const limit = query.limit ? Math.min(20, Number(query.limit)) : 6;
+    const radiusKm = query.radiusKm ? Number(query.radiusKm) : undefined;
+    const limit = query.limit ? Math.min(50, Number(query.limit)) : 6;
 
-    const nearbyChurches = await this.churchService.findNearby(lat, lng, radiusKm, 30);
+    const nearbyChurches: { church: Church; distanceKm: number | null }[] =
+      await this.churchService.findNearby(lat, lng, radiusKm, radiusKm === undefined ? 100 : 30);
+    if (radiusKm === undefined) {
+      const unlocated = await this.churchService.findUnlocated(100);
+      nearbyChurches.push(...unlocated.map((church) => ({ church, distanceKm: null })));
+    }
     if (nearbyChurches.length === 0) return [];
 
     const churchIds = nearbyChurches.map(({ church }) => church.id);
     const byChurchId = new Map(nearbyChurches.map((n) => [n.church.id, n]));
 
-    const schedules = await this.scheduleRepo
+    const qb = this.scheduleRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.type', 'type')
-      .where('s.churchId IN (:...churchIds)', { churchIds })
-      .getMany();
+      .where('s.churchId IN (:...churchIds)', { churchIds });
+    if (query.typeId) qb.andWhere('s.typeId = :typeId', { typeId: query.typeId });
+    const schedules = await qb.getMany();
 
     const now = new Date();
     const results: NearbySchedule[] = [];
@@ -99,12 +115,14 @@ export class ScheduleService {
         churchId: nearby.church.id,
         churchName: nearby.church.name,
         churchSlug: nearby.church.slug,
+        churchLogo: nearby.church.logo,
         locality: nearby.church.address?.locality,
-        distanceKm: Math.round(nearby.distanceKm * 10) / 10,
+        distanceKm: nearby.distanceKm === null ? null : Math.round(nearby.distanceKm * 10) / 10,
         time: schedule.time,
         durationMinutes: schedule.duration,
         occurrenceAt: occurrence.toISOString(),
         language: schedule.language,
+        typeId: schedule.typeId,
         typeName: schedule.type?.name,
       });
     }
@@ -144,7 +162,15 @@ export class ScheduleService {
       body.weekOfMonth ?? existing.weekOfMonth,
     );
 
-    await this.scheduleRepo.update(id, body);
+    // typeId est en lecture seule sur l'entité — la relation porte l'écriture.
+    const { typeId, ...rest } = body;
+    const patch: Partial<Schedule> = { ...rest };
+    if (typeId !== undefined) {
+      await this.typeService.assertScope(typeId, TypeScope.SCHEDULE);
+      patch.type = { id: typeId } as any;
+    }
+
+    await this.scheduleRepo.update(id, patch);
     return this.getById(id);
   }
 

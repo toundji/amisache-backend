@@ -49,6 +49,30 @@ Une correction va ici **si et seulement si** :
   absente au rechargement ; un non-admin sur ces routes → 403.
 - **Date** : 2026-09-08
 
+### FEAT-002 — Trace des erreurs 5xx en base (`api_errors`)  ✅ Remontée le 2026-09-26
+- **Statut** : ✅ Remontée (nest-auth : entités/services/contrôleur copiés, `app.module.ts`/
+  `.env.example`/migration `AddApiErrors` répliqués à l'identique — `tsc` propre)
+- **Couche/fichier socle** : `core/entities/api-error.entity.ts`, `core/services/api-error-log.service.ts`, `core/filters/api-error-filter.ts`
+- **Constat** : `errorId` (FIX-013) donne une reference mais oblige toujours a se
+  connecter au serveur pour lire les logs pm2.
+- **Ajout** : nouvelle table `api_errors` (ApiErrorLog, extends Audit) — un
+  ApiErrorLogService.log() ecrit chaque 5xx (errorId/statut/methode/route/email/IP/
+  message/stack) en fire-and-forget depuis ApiErrorFilter.catch(), jamais bloquant
+  pour la reponse. Purge automatique a 30 jours (@Cron, meme schema que
+  SessionService.cleanExpiredSessions).
+- **Date** : 2026-09-26
+
+### FIX-013 — `errorId` des 5xx annoncé par `CLAUDE.md` mais jamais implémenté  ✅ Remontée le 2026-09-26
+- **Statut** : ✅ Remontée (nest-auth : `api-error-filter.ts` copié à l'identique — `tsc` propre)
+- **Couche/fichier socle** : `core/filters/api-error-filter.ts`
+- **Symptôme** : un client reçoit `500 « An unexpected error occurred. »` sans aucun moyen
+  de retrouver la ligne de log correspondante (`CLAUDE.md` § Erreurs promet un `errorId`).
+- **Cause** : le filtre ne générait aucun identifiant.
+- **Correctif** : `errorId` (8 caractères, `randomUUID`) généré par exception, présent dans
+  toutes les lignes de log du filtre (`errorId=…`) et ajouté à la réponse pour les 5xx.
+- **Test** : aucun test automatisé ; `tsc` propre.
+- **Date** : 2026-09-26
+
 ### FIX-012 — Guards `APP_GUARD` + `UserAuditInterceptor` plantent silencieusement sur tout contexte WebSocket
 - **Statut** : 🔴 À remonter
 - **Couche/fichier socle** : `core/guards/jwt-auth.guard.ts` (`RequireAuthGuard`,

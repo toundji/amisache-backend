@@ -21,6 +21,10 @@ export class ChurchProfile extends Audit {
   @Column({ type: 'text', nullable: true, name: 'leader_message' })
   leaderMessage?: string;
 
+  /** Site web propre à l'église (certaines en ont déjà un) — lien affiché sur sa fiche publique. */
+  @Column({ nullable: true, length: 500 })
+  website?: string;
+
   // ─── Relation : Church (1—1) ─────────────────────────────────
   // ⚠️ churchId est en LECTURE SEULE — modifier via church: { id } as any
   // onDelete CASCADE : le profil n'a aucun sens sans l'église qui le porte

@@ -1,19 +1,21 @@
 // ============================================================
 // seed-types.ts
-// Table de types mutualisée (types/), discriminée par TypeScope.
+// Table de types mutualisée (types/), discriminée par TypeScope — porte
+// désormais SCHEDULE/DONATION/PUBLICATION uniquement : INTENTION/SACRAMENT
+// sont sortis dans une table dédiée le 2026-09-26, voir seed-request-types.ts.
 // Données de référence indispensables : sans elles, impossible de
-// créer un horaire, une demande, un don ou une publication.
+// créer un horaire, un don ou une publication.
 //
 // Clé unique (scope, name) → seed naturellement idempotent.
 // Append-only : on n'efface JAMAIS un type (FK onDelete RESTRICT côté
-// Schedule/Request/Donation/Publication). `--refresh` se contente de
+// Schedule/Donation/Publication). `--refresh` se contente de
 // réactiver les types déjà présents.
 // ============================================================
 import { DataSource } from 'typeorm';
 import { Type } from '../../type/entities/type.entity';
 import { TypeScope } from '../../type/type.enum';
 
-const TYPES: Record<TypeScope, string[]> = {
+const TYPES: Partial<Record<TypeScope, string[]>> = {
   [TypeScope.SCHEDULE]: [
     'Messe',
     'Messe dominicale',
@@ -25,26 +27,6 @@ const TYPES: Record<TypeScope, string[]> = {
     'Chemin de croix',
     'Neuvaine',
     'Veillée de prière',
-  ],
-  [TypeScope.INTENTION]: [
-    'Action de grâce',
-    "Repos de l'âme",
-    'Guérison',
-    'Protection',
-    'Réussite (examen / projet)',
-    'Anniversaire',
-    'Demande de pardon',
-    'Conversion',
-    'Paix dans la famille',
-  ],
-  [TypeScope.SACRAMENT]: [
-    'Baptême',
-    'Première communion',
-    'Confirmation',
-    'Mariage',
-    'Onction des malades',
-    'Réconciliation',
-    'Ordination',
   ],
   [TypeScope.DONATION]: [
     'Denier du culte',

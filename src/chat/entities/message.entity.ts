@@ -17,6 +17,12 @@ import { Conversation } from './conversation.entity';
 import { Attachment } from './attachment.entity';
 import { ActorType, MessageKind } from '../../shared/common.enum';
 
+/** Réponse rapide proposée sous un message — `value` : texte envoyé au clic (défaut : `label`). */
+export interface MessageOption {
+  label: string;
+  value?: string;
+}
+
 @Entity('chat_messages')
 @Index(['conversationId', 'createdAt'])
 export class Message extends Audit {
@@ -74,6 +80,42 @@ export class Message extends Audit {
    */
   @Column({ name: 'content_deleted_at', type: 'datetime', nullable: true })
   contentDeletedAt?: Date;
+
+  /**
+   * Trace technique d'une réponse du bot (tools appelés, durée, modèle,
+   * `fallback`) — jamais affichée, jamais renvoyée par l'API (`select: false`).
+   * JSON en longtext + collation binaire — convention du template.
+   */
+  @Column({
+    type: 'longtext',
+    nullable: true,
+    select: false,
+    collation: 'utf8mb4_bin',
+    transformer: {
+      to: (value?: Record<string, any> | null) =>
+        value == null ? null : JSON.stringify(value),
+      from: (value?: string | null): Record<string, any> | null =>
+        value == null ? null : (JSON.parse(value) as Record<string, any>),
+    },
+  })
+  meta?: Record<string, any>;
+
+  /**
+   * Choix cliquables proposés sous un message du bot (réponses rapides) —
+   * au clic, le client envoie `value ?? label` comme un message normal.
+   * Renvoyés par l'API, contrairement à `meta`.
+   */
+  @Column({
+    type: 'longtext',
+    nullable: true,
+    collation: 'utf8mb4_bin',
+    transformer: {
+      to: (value?: MessageOption[] | null) => (value?.length ? JSON.stringify(value) : null),
+      from: (value?: string | null): MessageOption[] | null =>
+        value == null ? null : (JSON.parse(value) as MessageOption[]),
+    },
+  })
+  options?: MessageOption[] | null;
 
   /** Chargée à la demande via `relations: ['attachments']` (eager: false) */
   @OneToMany(() => Attachment, (attachment) => attachment.message)

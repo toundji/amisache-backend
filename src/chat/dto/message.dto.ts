@@ -7,10 +7,13 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsLatitude,
+  IsLongitude,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -35,6 +38,38 @@ export class CreateAttachmentDto {
   meta?: Record<string, any>;
 }
 
+export class BotLocationDto {
+  @IsLatitude()
+  lat!: number;
+
+  @IsLongitude()
+  lng!: number;
+}
+
+/**
+ * Contexte de la page du widget, transmis au bot à chaque message — jamais
+ * persisté (voir chatbot-llm-spec.md § Flux).
+ */
+export class BotClientContextDto {
+  /** Paroisse de la page courante, s'il y en a une */
+  @IsString()
+  @IsOptional()
+  @MaxLength(255)
+  churchSlug?: string;
+
+  /** Fuseau IANA du navigateur (ex. Africa/Porto-Novo) */
+  @IsString()
+  @IsOptional()
+  @MaxLength(64)
+  timezone?: string;
+
+  /** Position du navigateur, seulement si l'utilisateur l'a accordée */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BotLocationDto)
+  location?: BotLocationDto;
+}
+
 // ── kind volontairement absent : ce lot n'émet que du TEXT/MEDIA
 // applicatif (pas de SYSTEM/CALL, voir prompt-claude-code-chat.md § Périmètre) ──
 
@@ -52,6 +87,11 @@ export class SendMessageDto {
   @ValidateNested({ each: true })
   @Type(() => CreateAttachmentDto)
   attachments?: CreateAttachmentDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BotClientContextDto)
+  context?: BotClientContextDto;
 }
 
 // ── Variante multipart : texte + fichiers en une seule requête ──

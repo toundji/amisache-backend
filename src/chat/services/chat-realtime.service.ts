@@ -14,6 +14,9 @@ export const CHAT_ADMIN_ROOM = 'admin:chat';
 export const conversationRoom = (conversationId: string): string =>
   `conversation:${conversationId}`;
 
+/** Room personnelle d'un HUMAN authentifié — rejointe automatiquement à la connexion. */
+export const userRoom = (userId: string): string => `user:${userId}`;
+
 @Injectable()
 export class ChatRealtimeService {
   private readonly logger = new Logger(ChatRealtimeService.name);
@@ -37,6 +40,10 @@ export class ChatRealtimeService {
 
   emitToAdmins(event: string, payload: unknown): void {
     this.emitToRoom(CHAT_ADMIN_ROOM, event, payload);
+  }
+
+  emitToUser(userId: string, event: string, payload: unknown): void {
+    this.emitToRoom(userRoom(userId), event, payload);
   }
 
   /**

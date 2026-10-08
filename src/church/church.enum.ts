@@ -12,11 +12,33 @@ export enum EntityType {
   CONFERENCE = 'CONFERENCE',
   ARCHDIOCESE = 'ARCHDIOCESE',
   DIOCESE = 'DIOCESE',
-  DOYENNE = 'DOYENNE',
+  VICARIAT = 'VICARIAT',
   PAROISSE = 'PAROISSE',
   COMMUNAUTE = 'COMMUNAUTE',
   CHURCH = 'CHURCH',
   CHAPEL = 'CHAPEL',
+}
+
+/**
+ * Nature d'une entité : PHYSICAL = un lieu réel (archidiocèse, paroisse,
+ * église, chapelle), VIRTUAL = un regroupement administratif (conférence,
+ * diocèse, vicariat, communauté). Valeur par défaut déduite du type —
+ * voir defaultNatureFor — mais modifiable entité par entité.
+ */
+export enum ChurchNature {
+  PHYSICAL = 'PHYSICAL',
+  VIRTUAL = 'VIRTUAL',
+}
+
+const PHYSICAL_TYPES = [
+  EntityType.ARCHDIOCESE,
+  EntityType.PAROISSE,
+  EntityType.CHURCH,
+  EntityType.CHAPEL,
+];
+
+export function defaultNatureFor(type: EntityType): ChurchNature {
+  return PHYSICAL_TYPES.includes(type) ? ChurchNature.PHYSICAL : ChurchNature.VIRTUAL;
 }
 
 /** Encadre l'entrée d'une entité sur la plateforme (voir cahier-des-charges §4.3) */

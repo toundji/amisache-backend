@@ -21,6 +21,9 @@ import {
   UserAuditSubscriber,
 } from './core/interceptors/api-audit';
 import { ApiErrorFilter } from './core/filters/api-error-filter';
+import { ApiErrorLogService } from './core/services/api-error-log.service';
+import { ApiErrorLog } from './core/entities/api-error.entity';
+import { ApiErrorController } from './core/controllers/api-error.controller';
 import { baseOrmConfig } from './database/base_orm_config';
 import { MailModule } from './mail/mail.module';
 import { ConfigModule } from '@nestjs/config';
@@ -38,6 +41,7 @@ import { ChurchModule } from './church/church.module';
 import { PaymentModule } from './payment/payment.module';
 import { LiturgyModule } from './liturgy/liturgy.module';
 import { CommunityModule } from './community/community.module';
+import { AssistantModule } from './assistant/assistant.module';
 
 @Module({
   imports: [
@@ -51,6 +55,8 @@ import { CommunityModule } from './community/community.module';
     ConfigModule.forRoot({ isGlobal: true }),
     // ── TypeORM (MySQL) ───────────────────────────────────
     TypeOrmModule.forRoot(baseOrmConfig),
+    // ── Trace des 5xx (ApiErrorFilter) ─────────────────────
+    TypeOrmModule.forFeature([ApiErrorLog]),
 
     // ── Redis (ioredis — pour les guards et les services) ─
     RedisModule.forRoot({
@@ -124,20 +130,27 @@ import { CommunityModule } from './community/community.module';
     PaymentModule,
     LiturgyModule,
     CommunityModule,
+    AssistantModule, // assistant LLM du chat — après chat/ et church/ (chatbot-llm-spec.md)
 
     // Notifications : module abstrait, channels enregistrés par le projet.
     // Défaut = in-app uniquement (persistance + GET /notifications). Pour
     // brancher FCM (token/topic) ou WebSocket, ajouter FcmTokenChannel /
     // FcmTopicChannel / WebSocketChannel ci-dessous avec un FcmSender /
     // WebSocketEmitter propre au projet — voir src/notifications/notification.types.ts.
-    NotificationModule.forRoot({
-      channels: [new InAppChannel()],
-    }),
+    // `global` : injectable par les modules métier (ex. assistant/ — escalades,
+    // alertes) sans ré-importer forRoot (qui enregistrerait deux fois le cron de purge).
+    {
+      ...NotificationModule.forRoot({
+        channels: [new InAppChannel()],
+      }),
+      global: true,
+    },
     // VotreModule, // ← ajoutez vos modules métier ici
   ],
-  controllers: [AppController],
+  controllers: [AppController, ApiErrorController],
   providers: [
     AppService,
+    ApiErrorLogService,
 
     // ── Guards globaux (ordre important) ─────────────────
     { provide: APP_GUARD, useClass: ApiKeyGuard },

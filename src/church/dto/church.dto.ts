@@ -19,7 +19,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { FileSystemStoredFile, HasMimeType, IsFile, IsFiles, MaxFileSize } from 'nestjs-form-data';
-import { EntityType, ValidationStatus } from '../church.enum';
+import { ChurchNature, EntityType, ValidationStatus } from '../church.enum';
 import { AddressDto } from '../../address/dto/address.dto';
 import { Church } from '../entities/church.entity';
 
@@ -28,6 +28,11 @@ import { Church } from '../entities/church.entity';
 export class CreateChurchDto {
   @IsEnum(EntityType, { message: "Type d'entité invalide." })
   type!: EntityType;
+
+  /** Déduite du type si absente — voir defaultNatureFor */
+  @IsEnum(ChurchNature, { message: 'Nature invalide.' })
+  @IsOptional()
+  nature?: ChurchNature;
 
   @IsString()
   @IsNotEmpty()
@@ -75,6 +80,10 @@ export class UpdateChurchDto {
   @MaxLength(160)
   slug?: string;
 
+  @IsEnum(ChurchNature, { message: 'Nature invalide.' })
+  @IsOptional()
+  nature?: ChurchNature;
+
   @IsHexColor({ message: 'accentColor doit être une couleur hexadécimale (#RRGGBB).' })
   @IsOptional()
   accentColor?: string;
@@ -83,6 +92,24 @@ export class UpdateChurchDto {
   @IsOptional()
   @MaxLength(10)
   defaultLanguage?: string;
+
+  @ValidateNested()
+  @TransformType(() => AddressDto)
+  @IsOptional()
+  address?: AddressDto;
+}
+
+/**
+ * PATCH /churches/:id/info — sous-ensemble de UpdateChurchDto ouvert au
+ * clergé actif de l'église (nom affiché + adresse). Slug, couleur, langue,
+ * hiérarchie et statut restent réservés à l'administration.
+ */
+export class UpdateChurchInfoDto {
+  @IsString()
+  @IsNotEmpty()
+  @IsOptional()
+  @MaxLength(160)
+  name?: string;
 
   @ValidateNested()
   @TransformType(() => AddressDto)

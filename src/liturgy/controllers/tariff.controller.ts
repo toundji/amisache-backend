@@ -37,6 +37,19 @@ export class TariffController {
   }
 
   /**
+   * GET /tariffs/min-lead-days?churchId=&typeId= — délai minimum applicable
+   * (église, puis ses ancêtres, puis la valeur par défaut du type).
+   */
+  @Get('min-lead-days')
+  @Public()
+  @ApiOperation({ summary: 'Résoudre le délai minimum applicable (avec repli hiérarchique)' })
+  @ApiQuery({ name: 'churchId', required: true, type: String })
+  @ApiQuery({ name: 'typeId', required: true, type: String })
+  resolveMinLeadDays(@Query('churchId') churchId: string, @Query('typeId') typeId: string) {
+    return this.tariffService.resolveMinLeadDaysById(churchId, typeId);
+  }
+
+  /**
    * GET /tariffs/admin — liste complète, toutes églises.
    * ⚠️ Déclarée AVANT `:id`.
    */

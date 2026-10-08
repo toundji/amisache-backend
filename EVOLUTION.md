@@ -58,6 +58,372 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-10-02 — Test Ollama (VPS) annulé
+- **Décision** (demandée) : test abandonné, Ollama retiré du serveur. Supprimés :
+  `ollama.client.ts` (+ spec), `ollama.prompt.ts`, le choix de client dans
+  `assistant.module.ts` (OpenRouter seul, comme avant) et les variables `LLM_PROVIDER`/
+  `LLM_FALLBACK`/`OLLAMA_*` de `.env.example`.
+
+### 2026-09-27 — Test : Ollama (VPS) à la place d'OpenRouter
+- **Décision** (test, demandé) : nouveau `OllamaClient` (`assistant/services/ollama.client.ts`),
+  même interface `LlmClient`, activé par `LLM_PROVIDER=ollama` (+ `OLLAMA_URL`/`OLLAMA_KEY`/
+  `OLLAMA_MODEL`) ; retour arrière = `LLM_PROVIDER=openrouter`. Seul `assistant.module.ts`
+  (choix du client) change — boucle, prompt, tools et `OpenRouterClient` intacts.
+  Garde-fous : 1 appel à la fois + 2 en attente, 60 s, `max_tokens` 200, `temperature` 0.2,
+  `reasoning_effort: "none"`, system + 4 derniers messages (1500 car., system entier),
+  avertissement au-delà de 3 tools, log provider/durée/tokens. `LLM_FALLBACK=true` →
+  OpenRouter sur timeout, erreur réseau, 503 ou file pleine.
+- **Limite connue** : requête actuelle (prompt ~4 200 car. + 9 tools) estimée à 2 500-3 000
+  tokens > `num_ctx` 2048 du modèle (début tronqué en silence) et ~4 min de lecture à
+  10 tok/s → timeouts attendus. À réduire petit à petit (prompt court, 3 tools, template).
+- **Conséquences** : `tsc` propre, 17 tests assistant verts (10 nouveaux). Non testé contre le VPS.
+- **Premier essai en prod (même jour)** : chaque appel Ollama en timeout à 60 s → repli
+  OpenRouter (1,5-2 s), mais le budget total de 60 s déjà épuisé → recherche mot-clé.
+- **Réduction (même jour)** : `ollama.prompt.ts` — prompt court (~700 car., date et paroisse
+  reprises du prompt complet) + 3 tools (`OLLAMA_TOOLS`, défaut `search_faq,search_church,
+  get_mass_schedule`), côté Ollama uniquement ; le repli OpenRouter reçoit la requête complète.
+  Log `promptTokens` ajouté. 18 tests verts. Non testé contre le VPS.
+
+### 2026-09-26 — Incident d'application de `AddRequestTypes` en production
+- **Constat** : la migration a echoue en cours de route (`#1826 - Duplicate FOREIGN KEY
+  constraint name`) — MySQL valide chaque DDL immediatement (commit implicite), meme
+  dans une transaction : les etapes precedentes (CREATE TABLE, INSERT, DROP FK sur
+  `requests`) etaient deja appliquees quand l'ADD CONSTRAINT suivant a echoue,
+  `migration:run` n'avait pourtant rien marque comme fait.
+- **Deux ecarts propres a CETTE base**, sans rapport avec le code/la migration elle-meme
+  (a garder en tete si un futur diagnostic tombe dessus) :
+  - La contrainte `tariffs.type_id -> types` ne s'appelait pas `FK_tariffs_type_id`
+    (nom du fichier `AddTariffs`) mais `FK_c5b4dd0f530b69c8bf66b0975f8` — drift deja
+    present avant cette session, jamais remarque. **Toujours verifier le nom reel** via
+    `information_schema.KEY_COLUMN_USAGE` avant un `DROP FOREIGN KEY`, ne jamais faire
+    confiance au nom suppose par le fichier de migration sur une base existante.
+  - Supprimer la FK de `requests.type_id` (a la main, phpMyAdmin) a aussi supprime
+    l'index `IDX_155cdafb15c49efbe52d7a318c` qui l'accompagnait — MySQL ne le fait pas
+    automatiquement via `ALTER TABLE ... DROP FOREIGN KEY` en ligne de commande, mais
+    certaines interfaces le proposent en meme temps sans que ce soit evident. Recree a
+    la main. A verifier systematiquement apres toute suppression manuelle de FK.
+- **Terminee a la main** (DROP/ADD CONSTRAINT sur `requests` et `tariffs` avec les noms
+  reels, `DELETE FROM types WHERE scope IN (...)`, index recree, ligne `migrations`
+  inseree manuellement pour `AddRequestTypes1790400400000`) — meme methode que
+  l'incident `AddChatModule` du 2026-09-20. Donnees verifiees : 16 lignes migrees dans
+  `request_types` (9 intentions + 7 sacrements), 16 lignes supprimees de `types` —
+  compte exact, aucune perte ni doublon.
+
+### 2026-09-26 — Table dediee `request_types` : sortie de la table mutualisee `types`
+- **Decision** (demande) : les types de demande (intention de messe / sacrement) sortent
+  de la table mutualisee `types` (type/) vers une table propre `request_types`
+  (RequestType, dans liturgy/ — colle a Request/Tariff qui les referencent). Don,
+  publication et horaire restent dans `types`.
+- **Backend** : nouveaux `liturgy/entities/request-type.entity.ts`,
+  `request-type.enum.ts`, `dto/request-type.dto.ts`, `services/request-type.service.ts`,
+  `controllers/request-type.controller.ts` (GET /request-types public + admin, CRUD),
+  enregistres dans LiturgyModule. `Request.type`/`Tariff.type` pointent desormais vers
+  `RequestType` (plus `Type`). `RequestService.validate`/`TariffService` remplacent
+  `typeService.assertScope(...)` par `requestTypeService.getById(...)` — la table etant
+  deja scopee, plus besoin de verifier le scope. `assistant-tools.service.ts` simplifie
+  (un seul appel `listActive()` au lieu de deux par Promise.all pour
+  intentions+sacrements) ; `AssistantModule` n'importe plus `TypeModule`.
+- **Migration ecrite a la main (`AddRequestTypes`)** : cree `request_types`, copie les
+  lignes INTENTION/SACRAMENT de `types` **avec le meme id** (les FK de `requests`/
+  `tariffs` restent valides sans reecrire une seule ligne), repointe les deux FK
+  (`FK_155cdafb15c49efbe52d7a318c5` sur requests, `FK_tariffs_type_id` sur tariffs) vers
+  `request_types`, puis supprime les lignes migrees de `types`. `down()` fait l'inverse.
+- **Garde-fou** : `POST`/`PATCH /types` refuse desormais `scope=INTENTION/SACRAMENT`
+  (`@IsIn` restreint a DONATION/PUBLICATION/SCHEDULE) — evite de creer un type inerte
+  dans l'ancienne table par erreur, plus jamais lu par aucun service.
+- **Seeds** : `seed-types.ts` ne seede plus INTENTION/SACRAMENT ; nouveau
+  `seed-request-types.ts` (memes noms, table dediee), chaine juste apres `seedTypes`
+  dans `seeder.ts`. `seed-tariffs.ts` resout desormais les types via `RequestType`.
+- **Consequences** : `tsc` propre, tests inchanges (8/9, echec preexistant sans rapport).
+  Migration `AddRequestTypes` non appliquee. Panel et client mis a jour dans le meme
+  lot (voir leurs EVOLUTION.md, meme date) — a deployer ensemble.
+
+### 2026-09-26 — `ChurchProfile.website` : lien vers le site propre de l'eglise
+- **Decision** (demande) : certaines eglises ont deja leur propre site — nouveau
+  champ `website` sur `ChurchProfile` (pas `Church`, meme raison que
+  `description`/`leaderMessage` : contenu de presentation, pas structurel).
+  `@IsUrl({ require_protocol: true })` cote DTO. Migration ecrite a la main
+  (`AddChurchProfileWebsite`).
+- **Consequences** : `tsc` propre. Migration non appliquee.
+
+### 2026-09-26 — Fix : detail d'un paiement invisible pour le clerge
+- **Constat** (demande, retour d'usage du clerge) : `GET /payments/:id` etait reserve
+  a admin/engineer — jamais ouvert au clerge, contrairement a la liste
+  (`GET /payments/church/:churchId`, deja scopee). Meme categorie de defaut que les
+  demandes/dons corriges le 2026-09-19.
+- **Decision** : nouveau `PaymentService.getByIdForClergy(id, user)` — charge le
+  paiement (`getById` charge desormais aussi `paymentMethod`, jamais fait avant,
+  meme pour l'admin — la vue detail affichait un id brut a la place du moyen de
+  paiement), puis `assertAuthorizedForChurch(user, paymentMethod.churchId)` ; 404
+  (pas 403) si non autorise. `GET /payments/:id` ouvert a `UserRole.clergy` en plus
+  d'admin/engineer, delegue a cette methode (admin/engineer bypassent deja via
+  `assertAuthorizedForChurch`).
+- **Consequences** : `tsc` propre, tests inchanges (8/9, echec preexistant sans
+  rapport). Non deploye.
+
+### 2026-09-26 — Fix : `POST /schedules` puis vraie cause trouvee via `errorId`
+- **Constat** : l'`errorId` (entree ci-dessous) a permis de retrouver la vraie erreur
+  en production : `TypeORMError: Undefined value encountered in property
+  'Schedule.churchId'` dans `ScheduleService.list` — pas `POST /schedules`
+  (creation d'horaire) comme suppose au debut, mais `GET /schedules` sans `churchId`.
+- **Cause reelle** : `ScheduleListComponent` (panel) appelait `scheduleService.list()`
+  sans `churchId` pour un admin/engineer (`isFullAccess()`), en s'appuyant sur un
+  commentaire deja present ("churchId optionnel cote panel") qui n'a jamais ete vrai
+  cote backend (`ListScheduleQuery.churchId` documente comme obligatoire) — le where
+  TypeORM recevait `undefined`, plante par une version recente de TypeORM au lieu
+  d'etre ignore silencieusement.
+- **Decision** : le panel utilise desormais `GET /schedules/admin` (deja existant,
+  batie pour exactement ce cas — meme convention "paire admin/church/:churchId" que
+  les 10 autres ressources, entree du 2026-09-08) au lieu de `/schedules` sans
+  parametre. `ScheduleService.list` (backend) leve en plus une `ApiError 400`
+  explicite si `churchId` est absent — defense en profondeur pour tout AUTRE appelant
+  (curl, Swagger, un futur composant) qui ferait la meme erreur : 400 propre au lieu
+  d'un 500 opaque.
+- **Conclusion sur l'`errorId`/`api_errors`** : premier vrai cas d'usage — a permis de
+  localiser la cause exacte (fichier + ligne) directement depuis le message
+  d'erreur du client, sans acces serveur.
+- **Consequences** : `tsc` propre, tests inchanges (8/9, echec preexistant sans
+  rapport). Non deploye.
+
+### 2026-09-26 — Panel + acces jeton pour la table `api_errors`
+- **Decision** : suite immediate de l'entree ci-dessous — `ApiErrorController`
+  (core/controllers/api-error.controller.ts) : `GET /api-errors/admin` (paginee,
+  admin/engineer) et `DELETE /api-errors/:id` (admin/engineer, une fois l'erreur
+  corrigee) pour le panel ; `GET /api-errors/public` (@Public + @NoKey, sans compte ni
+  cle API) pour un usage automatise (ex. Claude Code) — lecture seule, gardee par un
+  jeton dedie compare a `CLAUDE_ERRORS_TOKEN` (env), absent/vide = route desactivee
+  (404 constant). Volontairement pas de suppression via cette route publique : seule
+  la voie admin authentifiee peut supprimer, meme si le jeton fuit.
+- **Risque assume, documente dans `.env.example`** : quiconque connait ce jeton lit
+  TOUTES les erreurs (messages, piles d'appels, email/IP de l'utilisateur concerne)
+  sans authentification — a traiter comme un secret, jamais committe.
+- **Consequences** : `tsc` propre, tests inchanges (8/9, le seul echec est
+  `app.controller.spec.ts`, deja preexistant sans rapport). Migration `AddApiErrors`
+  toujours non appliquee.
+
+### 2026-09-26 — Table `api_errors` : trace des 5xx consultable sans acces serveur
+- **Decision** : suite de l'entree `errorId` ci-dessous — nouvelle entite `ApiErrorLog`
+  (`core/entities/api-error.entity.ts`, table `api_errors`, pas d'`entityCode`/code
+  genere, meme choix que `MailFailedJob`/`Notification` — entite systeme, pas une
+  ressource metier). `ApiErrorLogService.log()` (fire-and-forget, `.catch()` avale —
+  une panne DB ne doit jamais retarder/faire echouer la reponse d'erreur deja resolue)
+  ecrit `errorId`/statut/methode/route/email utilisateur/IP/message/stack, appele depuis
+  `ApiErrorFilter.catch()` pour les 5xx uniquement (memes 5xx qui recoivent deja
+  `errorId` dans la reponse). Purge automatique (@Cron('0 4 * * *'), 30 jours), meme
+  schema que `SessionService.cleanExpiredSessions`. Migration ecrite a la main
+  (AddApiErrors) — table simple, pas de raison de passer par migration:generate.
+- **Volontairement pas fait** : pas de page panel pour consulter cette table (pas
+  demande pour l'instant) — lecture directe en SQL en attendant.
+- **Consequences** : tsc propre, suite de tests inchangee (8 tests assistant verts ;
+  app.controller.spec.ts echoue deja sans ce changement, cf. entrees precedentes).
+  Migration AddApiErrors non appliquee.
+
+### 2026-09-26 — `errorId` sur les erreurs 5xx
+- **Constat** : un 500 sur `POST /schedules` côté portail, introuvable dans les logs — les
+  erreurs partent sur stderr (`~/.pm2/logs/amisachews-error.log`, pas `-out.log`) et rien
+  ne reliait la réponse à une ligne de log.
+- **Décision** : `ApiErrorFilter` génère un `errorId` (8 caractères), l'écrit dans chaque
+  ligne de log (`errorId=…`) et le renvoie dans la réponse des 5xx. Retrouver une erreur :
+  `grep -A4 <errorId> ~/.pm2/logs/amisachews-error.log`. Pas de table d'erreurs pour
+  l'instant (envisageable plus tard). Portail et panel affichent « (réf. …) ».
+  Correction du socle → `TEMPLATE-FIXES.md` FIX-013.
+- **Conséquences** : aucune migration, `tsc` propre. Non déployé. La cause du 500 sur
+  `/schedules` reste à trouver (ligne de log à récupérer).
+
+### 2026-09-26 — `/schedules/nearby` : logo de l'église
+- **Décision** (demandé, page `/messes` du portail) : `churchLogo` ajouté à chaque résultat
+  (`Church.logo`, déjà chargé par `findNearby`/`findUnlocated`). Aucune migration. `tsc` propre.
+
+### 2026-09-26 — Assistant : salutations religieuses et prières
+- **Décision** (discutée) : prompt seul, aucun tool, dictionnaire ni FAQ. Les formules
+  religieuses de salutation (« Shalom », « Ave Maria »…) sont traitées comme des
+  salutations (formule d'usage + offre d'aide, sans escalade) ; une prière demandée est
+  donnée sans tool, dans sa version liturgique française la plus récente.
+- **Limite connue** : si le LLM est en panne, le repli mot-clé ne reconnaît pas ces
+  formules (dictionnaire backend envisageable plus tard). Quota : 10 $ de crédits
+  OpenRouter prévus pour passer à ~1 000 requêtes/jour, modèles `:free` uniquement.
+- **Conséquences** : `tsc` propre, 8 tests assistant verts. Non testé avec le vrai LLM.
+
+### 2026-09-26 — Délai minimum par paroisse + choix cliquables dans le chat
+- **Délai par paroisse** (demandé) : `Tariff` porte désormais `minLeadDays` (nullable) et
+  `amount` devient nullable — une ligne = « règles de cette église pour ce type », au moins
+  l'un des deux (vérifié côté service). `TariffService.resolveMinLeadDays` remonte la
+  hiérarchie **indépendamment** du montant, repli final `Type.minLeadDays` (défaut
+  plateforme). Appliqué dans `RequestService.validate` (formulaire + assistant),
+  `list_request_types`, `get_upcoming_masses`. Nouveau `GET /tariffs/min-lead-days`
+  (public), utilisé par `/demandes` (client). Panel : menu « Tarifs & délais », champ délai
+  en création/détail, colonne dans la liste. Migration `AddTariffMinLeadDays` **non appliquée**.
+- **Choix cliquables** (demandé, « comme Claude ») : `Message.options` (`{ label, value? }[]`,
+  renvoyé par l'API, contrairement à `meta`) ; migration `AddChatMessageOptions` **non
+  appliquée**. Construits par le serveur à partir des tools (`ToolRunState.options`, dernier
+  tool gagnant) : paroisses (≥ 2 résultats), types (avec offrande), 5 premières messes +
+  « Autres dates » ; vidés après `prepare_request` ou une escalade. Le LLM ne recopie plus
+  la liste. Client : boutons sous le dernier message du bot, le clic envoie `value ?? label`
+  comme un message normal. Pas de bouton « Sans texte » : `prepare_request` part dès le choix
+  de la messe, le texte reste modifiable dans le formulaire.
+- **Conséquences** : `tsc` propre, 8 tests assistant verts (1 nouveau), `ng build` client et
+  panel propres. Non testé avec le vrai LLM ni déployé. **Ordre de déploiement** :
+  migrations → backend → client/panel.
+
+### 2026-09-26 — Fix : parcours de demande de messe dans le chat
+- **Constat** (conversation réelle) : l'assistant affichait `typeId`/`scheduleId` et demandait au
+  fidèle de recopier le `scheduleId` ; il proposait des messes avant le délai minimum ; les
+  messages suivants (« le 25 septembre me convient ») tombaient dans le repli mot-clé
+  (« Je n'ai pas de réponse toute prête… »). Cause : les résultats de tools ne sont pas
+  gardés d'un message à l'autre, le LLM doit tout rappeler (paroisse, types, messes,
+  préparation) — ~4 appels à 6-15 s, au-delà du budget de 30 s → exception → repli.
+- **Décision** : plus aucun identifiant côté LLM. `prepare_request` prend le **nom** du type et
+  l'**heure** (`time`) ; le serveur retrouve le type (casse/accents ignorés) et l'horaire
+  (date + heure). `list_request_types`/`get_upcoming_masses` n'exposent plus d'id ;
+  `get_upcoming_masses` accepte `type` et démarre après son délai minimum. `findChurch` se
+  replie sur une recherche par nom (résultat unique) si le slug est inconnu. Budget : 60 s
+  au total, 20 s par appel. Prompt : appeler `prepare_request` dès le choix de la messe,
+  ne jamais demander d'identifiant, 5 messes proposées au plus.
+- **Conséquences** : lien `/demandes?…&scheduleId&time` inchangé (client non touché). `tsc`
+  propre, 7 tests assistant verts. Non testé avec le vrai LLM ni déployé.
+
+### 2026-09-25 — `/schedules/nearby` : filtre par type + plafond relevé
+- **Décision** (demandé, page `/messes` du portail) : `typeId?` en paramètre (filtre
+  `s.typeId`) et `typeId` ajouté à chaque résultat ; `limit` plafonné à 50 au lieu de 20.
+  Permet `/messes?type=Confession` (horaires de confession à proximité).
+- **Suite (même jour, demandé)** : `radiusKm` omis = **aucune limite de distance** (était :
+  15 km par défaut — seul `home/` du portail l'omettait jamais, il passe 15 explicitement ;
+  l'assistant passe son propre rayon à `findNearby`). Candidats : les 100 églises
+  géolocalisées les plus proches + les églises approuvées **sans localisation**
+  (`ChurchService.findUnlocated`, nouveau), renvoyées avec `distanceKm: null` — elles
+  n'apparaissaient jamais dans la recherche de proximité. `findNearby` accepte un
+  `radiusKm` `undefined` (pas de `HAVING`).
+- **Conséquences** : aucune migration. `tsc` propre. Non déployé.
+
+### 2026-09-25 — Clergé : nom/adresse de son église + type d'un horaire modifiables
+- **Décision** : demandé explicitement pour le portail client (`/profil/paroisse/:churchId`).
+  - `PATCH /churches/:id/info` (admin/engineer/clergy + `assertAuthorizedForChurch`) —
+    nouveau `UpdateChurchInfoDto` (`name?`, `address?`), délègue à `ChurchService.update`
+    avec uniquement ces deux champs. `PATCH /churches/:id` (slug, couleur, langue) reste admin.
+  - `UpdateScheduleDto.typeId?` — `ScheduleService.update` valide le scope `SCHEDULE`
+    (`TypeService.assertScope`) et écrit via la relation (`type: { id }`, `typeId` en
+    lecture seule sur l'entité).
+- **Conséquences** : aucune migration. `tsc -p tsconfig.build.json` propre. Non testé en HTTP live.
+
+### 2026-09-25 — Assistant du chat : préparer une demande (intention/sacrement) depuis la conversation
+- **Décision** (demandé) : trois nouveaux tools dans `AssistantToolsService` —
+  `list_request_types` (types INTENTION/SACRAMENT actifs + délai minimum + offrande résolue
+  via `TariffService.resolve`), `get_upcoming_masses` (occurrences datées sur 14 jours par
+  défaut, 31 max, via `isValidScheduleOccurrence`, avec `scheduleId`) et `prepare_request`.
+  **Le LLM n'enregistre jamais rien** : `prepare_request` valide puis pose
+  `ToolRunState.requestFormUrl` ; `LlmChatBotService` ajoute lui-même le lien
+  `[Finaliser ma demande →](/demandes?churchId&typeId&date&scheduleId&time&text)` sous la
+  réponse finale (jamais recopié par le LLM). Le fidèle vérifie et envoie via le formulaire
+  existant — offrande, reçu et pièce jointe inchangés (option « préremplir » retenue plutôt
+  qu'une création depuis le chat).
+- **`RequestService.validate()`** extrait de `create()` (église, scope du type, domicile,
+  délai, correspondance horaire) — même jeu de règles pour le formulaire et l'assistant.
+  `AssistantModule` importe `LiturgyModule` + `TypeModule` (aucun cycle).
+- Prompt : parcours de demande (paroisse → type → messe réelle → texte → `prepare_request`),
+  interdiction d'inventer une date/heure ou de dire que la demande est envoyée.
+- **Au passage (export panel)** : `listAdmin`/`listForChurch` des demandes chargent aussi
+  `type` et `schedule` (heure de la messe pour le filtre/export du panel).
+- **Conséquences** : aucune migration. `tsc` propre, 7 tests assistant verts
+  (`NODE_OPTIONS=--experimental-vm-modules`), dont un nouveau sur le lien. Non testé avec
+  le vrai LLM ni déployé.
+
+### 2026-09-24 — Fix : recherche de paroisse mot par mot
+- **Constat** (capture utilisateur) : l'assistant ne trouvait pas « notre dame des apotre »
+  alors que « Paroisse Notre-Dame des Apôtres » existe — `ChurchService.buildList` cherchait
+  la phrase entière (`LIKE '%…%'`), l'espace ne correspondait pas au tiret.
+- **Décision** : la recherche est découpée en mots (espaces, tirets, apostrophes) ; chaque
+  mot doit apparaître dans le nom, le quartier ou le village (ET entre mots, OU entre
+  champs). Profite aussi à l'annuaire du portail (même méthode). Accents déjà ignorés par
+  la collation de la base.
+- **Conséquences** : `nest build` propre, non testé contre la base.
+
+### 2026-09-24 — Chat : retour AGENT → BOT + messages système de changement de mode
+- **Constat** (capture utilisateur) : après « Prendre en charge » dans le panel, la
+  conversation passait en `AGENT` pour toujours — le bot ne répondait plus, aucun moyen de
+  revenir en `BOT`, et le fidèle n'était pas prévenu.
+- **Décision** : `POST /chat/conversations/:id/release` (`admin`/`engineer`/`clergy`) →
+  `ChatService.releaseToBot` repasse en `BOT`. `handoff` et `releaseToBot` postent un
+  message `SYSTEM` (`kind=SYSTEM`) diffusé au fidèle (« Un membre de l'équipe a pris le
+  relais… » / « L'assistant reprend la conversation. »). `postBotMessage` délègue à un
+  `postMessage` générique (bot ou système). Les messages `SYSTEM` ne partent pas dans
+  l'historique du LLM (`recentTextMessages` filtre `kind=TEXT`).
+- **Conséquences** : aucune migration (`ActorType.SYSTEM`/`MessageKind.SYSTEM` existaient).
+  `nest build` propre, non testé en conditions réelles. ⚠️ Préexistant, non traité :
+  `POST :id/handoff` n'a aucun `@Roles` — tout compte authentifié peut l'appeler.
+
+### 2026-09-23 — Assistant du chat : bascule Mistral → OpenRouter (modèle gratuit)
+- **Décision** (utilisateur) : le compte Mistral n'avait aucun quota (`429`,
+  `x-ratelimit-limit-req-minute: 0`, même avec leur code d'exemple) → passage à
+  **OpenRouter** avec un modèle gratuit. `OpenRouterClient` (`fetch` natif, format OpenAI,
+  aucune dépendance ; `@mistralai/mistralai` désinstallé). Variables : `OPENROUTER_API_KEY`,
+  `OPENROUTER_MODEL` (liste séparée par des virgules = repli géré par OpenRouter ; défaut
+  `nvidia/nemotron-3-super-120b-a12b:free,nvidia/nemotron-3-ultra-550b-a55b:free`, retenus
+  après un essai de 6 modèles gratuits gérant les tools). Une seconde tentative en cas
+  d'échec passager s'il reste ≥ 5 s sur le budget de 30 s. Alerte admin renommée
+  `assistant.llm-unavailable`.
+- **Prompt** : vouvoiement, jamais de slug affiché, confirmation d'escalade en une ou deux
+  phrases sans contenu spirituel (le modèle ajoutait des conseils de lui-même).
+- **Test local** (base locale, `.env` restauré à l'identique) : salutation, horaires
+  (tool `search_church` + `get_mass_schedule`, données exactes), page paroisse, paroisse la
+  plus proche (`nearMe`), baptême sans FAQ → escalade équipe Amisache, doute → escalade
+  clergé de Notre-Dame + notification. 6-15 s par réponse sur le modèle gratuit.
+- **Limites du gratuit** : ~50 requêtes/jour sur ce compte (≈ 15-20 questions), modèles
+  parfois saturés (→ repli FAQ), fournisseurs gratuits susceptibles de conserver les
+  conversations. À remplacer par un modèle payant avant un vrai usage.
+- **Point ouvert** : la règle « ré-escalade = aucun message » (spec) laisse sans réponse
+  une **nouvelle** question non maîtrisée posée après une première escalade, et écrase la
+  raison précédente (`escalation_reason`). À rediscuter.
+
+### 2026-09-23 — Assistant du chat : LLM Mistral (function calling) — révise « PAS un LLM »
+- **Décision** : la décision du 2026-09-20 (« le bot n'est PAS un LLM ») est **révisée**.
+  Spec complète et arbitrages : `chatbot-llm-spec.md` (v2). Nouveau module métier
+  `assistant/` (dépend de `chat/`, `church/`, `liturgy/` ; `chat/` ne le connaît pas) :
+  `LlmChatBotService` s'enregistre au démarrage auprès de `ChatBotService.registerEngine`
+  (moteur enfichable — `chat/` reste polymorphe, AMISACHE.md §6.1). Sans
+  `MISTRAL_API_KEY`, rien n'est enregistré : le bot reste sur la recherche mot-clé.
+  - **Tools** (`AssistantToolsService`) : `search_faq`, `get_mass_schedule` (horaires
+    récurrents, hors `ONCE`), `search_church` (nom/ville via `ChurchService.listPublic`,
+    proximité via `findNearby` + position du navigateur), `get_user_churches`,
+    `get_clergy_contact`, `escalate_to_agent`. 5 tours max, 15 s par appel, 30 s au total ;
+    un tool qui plante renvoie `{ error }` au LLM. Dépassement → escalade + message fixe.
+  - **Panne Mistral** : repli sur `ChatBotService.keywordReply` + alerte admins
+    (`assistant:alert` socket + notification in-app), au plus une toutes les 15 min (clé
+    Redis `SET NX EX`).
+  - **Escalade** : `ChatService.escalate` → `status=PENDING`, colonnes
+    `escalated_at`/`escalation_reason`/`escalated_church_id` (UUID nu, pas de FK), mode
+    **inchangé** (BOT). Clergé actif de la paroisse ajouté comme participant (`CLERGY`) →
+    il la voit dans `GET /chat/conversations` et peut rejoindre la room ; aucun clergé
+    actif ou question non paroissiale → admins. Notification in-app + `conversation:updated`
+    sur la nouvelle room personnelle `user:{id}` (gateway, tout HUMAN connecté).
+    Ré-escalade d'une conversation déjà escaladée → raison mise à jour, **aucun message**.
+  - **Trace** : `Message.meta` (longtext JSON, `select: false`, jamais diffusée par socket).
+- **`chat/` adapté** : `SendMessageDto.context` (`churchSlug`/`timezone`/`location`, non
+  persisté) ; conversation assistant d'un connecté = `subjectType: 'bot-widget'`,
+  `subjectId: userId` (refus 403 si `subjectId` ≠ appelant, salut du bot à la création) ;
+  le bot répond au GUEST **ou** au propriétaire d'une `bot-widget`, jamais à un autre
+  HUMAN ; réponse **non bloquante** (la requête d'envoi n'attend plus le bot) avec
+  `typing` AI pendant la génération ; `HandoffDto.fromActorId` optionnel (le fidèle
+  reste participant). Mode invité `/chat/guest/*` conservé, plus utilisé par le widget.
+- **`NotificationModule`** rendu `global` dans `AppModule` (injectable par `assistant/`
+  sans ré-appeler `forRoot`, qui dupliquerait le cron de purge).
+- **Conséquences** : migration `AddChatAssistant` (écrite à la main) **non appliquée** —
+  `.env` pointe sur la prod. `MISTRAL_API_KEY` à ajouter aux `.env` (absent partout).
+  `nest build` propre ; 6 tests unitaires sur la boucle (`llm-chat-bot.service.spec.ts`).
+  ⚠️ Jest ne tourne qu'avec `NODE_OPTIONS=--experimental-vm-modules` (NestJS 12 est ESM —
+  préexistant, `app.controller.spec.ts` échoue aussi sans).
+- **Test local (même jour, base locale `amisache_db`, `.env` basculé puis restauré à
+  l'identique)** : base locale remise à niveau (8 migrations en retard appliquées,
+  `AddChatModule` marquée appliquée — tables déjà présentes, comme en prod le 20/09) et
+  seedée. Vérifié : ouverture de la conversation `bot-widget`, 403 sur celle d'un autre,
+  `typing` AI puis réponse par socket (~1-2 s), repli mot-clé + trace `fallback` + **une
+  seule** alerte admin pour 9 échecs. **Mistral non testé** : la clé renvoie `429`
+  (`x-ratelimit-limit-req-minute: 0` — aucune formule active sur le compte).
+- **Bug corrigé (préexistant, `ChatGateway`)** : le client reçoit `connect` avant la fin
+  de `handleConnection` (vérif. Redis asynchrone) — un `join_conversation` émis aussitôt
+  arrivait sur un socket sans identité et plantait (`actorId` undefined), la room restait
+  vide et plus aucun événement n'arrivait. Les handlers attendent désormais la fin de
+  l'authentification (`authenticating`), `getSocketData` ignore un `socket.data` vide.
+
 ### 2026-09-21 — Chat en temps réel (Socket.io) — gateway `/chat`
 - **Décision** : demandé explicitement (« ajouter le websocket pour que ce soit
   instantané »). Nouveau `ChatGateway` (`chat/gateways/chat.gateway.ts`, namespace

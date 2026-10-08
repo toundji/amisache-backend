@@ -64,8 +64,24 @@ export class PaymentService {
   }
 
   async getById(id: string): Promise<Payment> {
-    const payment = await this.paymentRepo.findOne({ where: { id } });
+    const payment = await this.paymentRepo.findOne({ where: { id }, relations: { paymentMethod: true } });
     if (!payment) throw new ApiErrorNotFoundById('payments', id);
+    return payment;
+  }
+
+  /**
+   * Détail d'un paiement — clergé ACTIF de l'église concernée (déduite de
+   * `paymentMethod.churchId`), ou admin/engineer (bypass déjà géré par
+   * `assertAuthorizedForChurch`). 404 si non autorisé — n'expose pas
+   * l'existence du paiement à un clergé d'une autre église.
+   */
+  async getByIdForClergy(id: string, user: JwtUserInfo): Promise<Payment> {
+    const payment = await this.getById(id);
+    try {
+      await this.clergyMemberService.assertAuthorizedForChurch(user, payment.paymentMethod!.churchId);
+    } catch {
+      throw new ApiErrorNotFoundById('payments', id);
+    }
     return payment;
   }
 

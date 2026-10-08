@@ -34,7 +34,7 @@ const RANKED_TYPES: EntityType[] = [
   EntityType.CONFERENCE,
   EntityType.ARCHDIOCESE,
   EntityType.DIOCESE,
-  EntityType.DOYENNE,
+  EntityType.VICARIAT,
   EntityType.PAROISSE,
   EntityType.COMMUNAUTE,
 ];
@@ -77,11 +77,17 @@ export class ChurchService {
     if (query.status) qb = qb.andWhere('c.status = :status', { status: query.status });
     if (query.type) qb = qb.andWhere('c.type = :type', { type: query.type });
     if (query.parentId) qb = qb.andWhere('c.parentId = :parentId', { parentId: query.parentId });
-    if (query.search?.trim()) {
-      const term = `%${query.search.trim()}%`;
-      qb = qb
-        .leftJoin(Village, 'v', 'v.id = c.address.villageId')
-        .andWhere('(c.name LIKE :term OR c.address.locality LIKE :term OR v.name LIKE :term)', { term });
+    // Mot par mot : « notre dame des apotre » doit trouver « Notre-Dame des Apôtres »
+    // (tiret, ordre, champ différent) — chaque mot dans le nom, le quartier ou le village.
+    const words = (query.search ?? '').split(/[\s\-'’]+/).filter(Boolean);
+    if (words.length) {
+      qb = qb.leftJoin(Village, 'v', 'v.id = c.address.villageId');
+      words.forEach((word, i) => {
+        qb = qb.andWhere(
+          `(c.name LIKE :w${i} OR c.address.locality LIKE :w${i} OR v.name LIKE :w${i})`,
+          { [`w${i}`]: `%${word}%` },
+        );
+      });
     }
 
     const [data, total] = await qb.getManyAndCount();
@@ -110,27 +116,40 @@ export class ChurchService {
    * filtre de rayon passe par `HAVING` (pas `WHERE`) car MySQL ne permet
    * pas de référencer un alias de SELECT ailleurs qu'en HAVING/ORDER BY.
    */
+  /** `radiusKm` omis = aucune limite de distance (églises géolocalisées seulement). */
   async findNearby(
     lat: number,
     lng: number,
-    radiusKm: number,
+    radiusKm: number | undefined,
     limit: number,
   ): Promise<{ church: Church; distanceKm: number }[]> {
-    const { entities, raw } = await this.churchRepo
+    const qb = this.churchRepo
       .createQueryBuilder('c')
       .addSelect(
         "ST_Distance_Sphere(c.location, ST_GeomFromText(CONCAT('POINT(', :lng, ' ', :lat, ')'), 4326)) / 1000",
         'distanceKm',
       )
       .where('c.status = :status', { status: ValidationStatus.APPROVED })
-      .andWhere('c.location IS NOT NULL')
-      .having('distanceKm <= :radiusKm')
+      .andWhere('c.location IS NOT NULL');
+    if (radiusKm !== undefined) qb.having('distanceKm <= :radiusKm');
+    const { entities, raw } = await qb
       .orderBy('distanceKm', 'ASC')
       .limit(limit)
       .setParameters({ lat, lng, radiusKm })
       .getRawAndEntities();
 
     return entities.map((church, i) => ({ church, distanceKm: Number(raw[i].distanceKm) }));
+  }
+
+  /** Églises approuvées sans localisation — exclues de toute recherche par distance. */
+  async findUnlocated(limit: number): Promise<Church[]> {
+    return this.churchRepo
+      .createQueryBuilder('c')
+      .where('c.status = :status', { status: ValidationStatus.APPROVED })
+      .andWhere('c.location IS NULL')
+      .orderBy('c.name', 'ASC')
+      .limit(limit)
+      .getMany();
   }
 
   // ── Création / mise à jour ────────────────────────────────

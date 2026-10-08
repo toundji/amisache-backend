@@ -109,6 +109,11 @@ export class UpdateScheduleDto {
   @IsDateString()
   @IsOptional()
   endDate?: string;
+
+  /** Doit appartenir au scope SCHEDULE (validé côté service via TypeService) */
+  @IsUUID()
+  @IsOptional()
+  typeId?: string;
 }
 
 export interface ListScheduleQuery {
@@ -119,10 +124,12 @@ export interface ListScheduleQuery {
 export interface ListNearbyScheduleQuery {
   lat: number;
   lng: number;
-  /** km — défaut 15 côté service */
+  /** km — omis = aucune limite, églises sans localisation incluses */
   radiusKm?: number;
-  /** défaut 6, plafonné à 20 côté service */
+  /** défaut 6, plafonné à 50 côté service */
   limit?: number;
+  /** Filtre sur un Type scope SCHEDULE (ex. « Confession ») — facultatif */
+  typeId?: string;
 }
 
 /** Réponse de GET /schedules/nearby — une occurrence à venir, toutes églises confondues. */
@@ -131,12 +138,15 @@ export interface NearbySchedule {
   churchId: string;
   churchName: string;
   churchSlug: string;
+  churchLogo?: string;
   locality?: string;
-  distanceKm: number;
+  /** null = église sans localisation (seulement quand radiusKm est omis) */
+  distanceKm: number | null;
   time: string;
   durationMinutes: number;
   /** ISO 8601 — instant UTC réel de la prochaine occurrence (voir liturgy.util.ts) */
   occurrenceAt: string;
   language?: string;
+  typeId: string;
   typeName?: string;
 }

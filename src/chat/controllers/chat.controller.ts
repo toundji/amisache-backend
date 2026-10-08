@@ -198,12 +198,23 @@ export class ChatController {
 
   /**
    * POST /chat/conversations/:id/handoff
-   * Transfert BOT -> AGENT — n'émet aucun message SYSTEM (hors périmètre).
+   * Transfert BOT -> AGENT — message SYSTEM diffusé au fidèle.
    */
   @Post(':id/handoff')
   @ApiOperation({ summary: 'Transférer une conversation du bot vers un agent' })
   handoff(@Param('id') id: string, @Body() body: HandoffDto) {
     return this.chatService.handoff(id, body);
+  }
+
+  /**
+   * POST /chat/conversations/:id/release
+   * Retour AGENT -> BOT — l'assistant répondra au prochain message du fidèle.
+   */
+  @Post(':id/release')
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
+  @ApiOperation({ summary: "Rendre la main à l'assistant (retour en mode BOT)" })
+  releaseToBot(@Param('id') id: string) {
+    return this.chatService.releaseToBot(id);
   }
 }
 

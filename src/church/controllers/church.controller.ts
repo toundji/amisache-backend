@@ -34,6 +34,7 @@ import {
   SetPerimeterDto,
   UpdateChurchDto,
   UpdateChurchImageDto,
+  UpdateChurchInfoDto,
   UpdateChurchPhotosDto,
   UpdateChurchStatusDto,
 } from '../dto/church.dto';
@@ -127,6 +128,24 @@ export class ChurchController {
   @ApiOperation({ summary: '[Admin] Mettre à jour une entité' })
   update(@Param('id') id: string, @Body() body: UpdateChurchDto) {
     return this.churchService.update(id, body);
+  }
+
+  /**
+   * PATCH /churches/:id/info — admin/engineer, ou clergé ACTIF de cette
+   * église. Limité au nom et à l'adresse (UpdateChurchInfoDto) ; le reste de
+   * la fiche passe par PATCH /:id (admin). Le champ-à-champ explicite évite
+   * qu'un champ hors DTO ne fuie vers ChurchService.update.
+   */
+  @Patch(':id/info')
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Mettre à jour le nom et l'adresse (admin, ou clergé de cette église)" })
+  async updateInfo(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateChurchInfoDto) {
+    await this.clergyMemberService.assertAuthorizedForChurch(user, id);
+    const patch: UpdateChurchDto = {};
+    if (body.name !== undefined) patch.name = body.name;
+    if (body.address !== undefined) patch.address = body.address;
+    return this.churchService.update(id, patch);
   }
 
   /** PATCH /churches/:id/status — admin uniquement (approuver/suspendre) */

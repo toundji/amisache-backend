@@ -17,6 +17,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
 import { format } from 'date-fns';
 
@@ -25,6 +26,7 @@ import {
   ApiErrorDb,
   AppValidationError,
 } from '../../utils/api-error';
+import { ApiErrorLogService } from '../services/api-error-log.service';
 
 // ── Shape de la réponse client ────────────────────────────────
 
@@ -33,6 +35,8 @@ interface ApiErrorResponse {
   msg: string;
   customCode?: number;
   body?: unknown;
+  /** 5xx uniquement — même valeur que dans la ligne de log, pour la retrouver. */
+  errorId?: string;
   url: string;
   timestamp: string;
   // Validation uniquement
@@ -45,14 +49,33 @@ interface ApiErrorResponse {
 export class ApiErrorFilter implements ExceptionFilter {
   private readonly logger = new Logger('ApiErrorFilter');
 
+  constructor(private readonly errorLog: ApiErrorLogService) {}
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
     const url = request.url;
     const timestamp = new Date().toISOString();
+    const errorId = randomUUID().slice(0, 8);
 
-    const { status, body } = this.resolve(exception, url, timestamp, request);
+    const { status, body } = this.resolve(exception, url, timestamp, request, errorId);
+    if (status >= 500) {
+      body.errorId = errorId;
+      // Fire-and-forget : voir ApiErrorLogService.log — jamais bloquant pour la réponse.
+      this.errorLog
+        .log({
+          errorId,
+          statusCode: status,
+          method: request.method,
+          path: request.path,
+          userEmail: (request as any).user?.email,
+          ip: (request as any).userIp ?? request.ip,
+          message: body.msg,
+          stack: exception instanceof Error ? exception.stack : undefined,
+        })
+        .catch(() => undefined);
+    }
 
     response.status(status).json(body);
   }
@@ -64,10 +87,11 @@ export class ApiErrorFilter implements ExceptionFilter {
     url: string,
     timestamp: string,
     request: Request,
+    errorId: string,
   ): { status: number; body: ApiErrorResponse } {
     // 1 — Erreur DB (sous-classe ApiError — vérifier avant ApiError)
     if (exception instanceof ApiErrorDb) {
-      this.logDb(exception, request);
+      this.logDb(exception, request, errorId);
       return {
         status: HttpStatus.INTERNAL_SERVER_ERROR,
         body: {
@@ -84,7 +108,7 @@ export class ApiErrorFilter implements ExceptionFilter {
       const status = exception.getStatus();
       // Logger automatiquement les 5xx, et les 4xx marqués shouldLog
       if (status >= 500 || exception.shouldLog) {
-        this.logApiError(exception, request);
+        this.logApiError(exception, request, errorId);
       }
       return {
         status,
@@ -117,7 +141,7 @@ export class ApiErrorFilter implements ExceptionFilter {
     // 4 — HttpException NestJS standard
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
-      this.logUnexpected(exception, request);
+      this.logUnexpected(exception, request, errorId);
       return {
         status,
         body: {
@@ -131,7 +155,7 @@ export class ApiErrorFilter implements ExceptionFilter {
 
     // 5 — Erreur JS générique / microservice
     if (exception instanceof Error) {
-      this.logUnexpected(exception, request);
+      this.logUnexpected(exception, request, errorId);
       return {
         status: HttpStatus.INTERNAL_SERVER_ERROR,
         body: {
@@ -144,7 +168,7 @@ export class ApiErrorFilter implements ExceptionFilter {
     }
 
     // 6 — Inconnu
-    this.logger.error('Unknown exception type', exception);
+    this.logger.error(`[UNKNOWN] errorId=${errorId} ${this.formatRequest(request)}`, exception);
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       body: {
@@ -158,10 +182,10 @@ export class ApiErrorFilter implements ExceptionFilter {
 
   // ── Helpers de logging ────────────────────────────────────
 
-  private logDb(err: ApiErrorDb, req: Request): void {
+  private logDb(err: ApiErrorDb, req: Request, errorId: string): void {
     this.logger.error(
       [
-        `[DB ERROR] ${err.entity}.${err.op}`,
+        `[DB ERROR] errorId=${errorId} ${err.entity}.${err.op}`,
         `  caller  : ${this.formatCaller(err)}`,
         `  request : ${this.formatRequest(req)}`,
         `  context : ${JSON.stringify(err.context)}`,
@@ -170,9 +194,9 @@ export class ApiErrorFilter implements ExceptionFilter {
     );
   }
 
-  private logApiError(err: ApiError, req: Request): void {
+  private logApiError(err: ApiError, req: Request, errorId: string): void {
     const detail = err.detail ? ` | detail: ${err.detail}` : '';
-    const line = `[${err.level.toUpperCase()}] ${err.msg}${detail} | ${this.formatCaller(err)} | ${this.formatRequest(req)}`;
+    const line = `[${err.level.toUpperCase()}] errorId=${errorId} ${err.msg}${detail} | ${this.formatCaller(err)} | ${this.formatRequest(req)}`;
     if (err.level === 'warn') {
       this.logger.warn(line);
     } else {
@@ -180,9 +204,9 @@ export class ApiErrorFilter implements ExceptionFilter {
     }
   }
 
-  private logUnexpected(err: Error, req: Request): void {
+  private logUnexpected(err: Error, req: Request, errorId: string): void {
     this.logger.error(
-      `[UNEXPECTED] ${err.message}\n  request: ${this.formatRequest(req)}\n  stack: ${err.stack}`,
+      `[UNEXPECTED] errorId=${errorId} ${err.message}\n  request: ${this.formatRequest(req)}\n  stack: ${err.stack}`,
     );
   }
 

@@ -1,14 +1,43 @@
 // ============================================================
 // AMISACHE — chat-bot.service.ts
-// Réponse automatique « basique » pour une conversation en mode BOT —
-// PAS un LLM (décision explicite, cf. EVOLUTION.md) : correspondance par
-// mots-clés contre les FAQ déjà publiées (content/Faq), avec un message
-// de repli si rien ne correspond. Objectif : la bulle a une vraie réponse
-// dès l'ouverture, sans dépendance à un fournisseur d'IA externe.
+// Réponse automatique pour une conversation en mode BOT.
+//
+// Moteur enfichable : un module métier (assistant/, LLM Mistral — voir
+// chatbot-llm-spec.md) enregistre son moteur via `registerEngine()` au
+// démarrage. chat/ ne l'importe jamais (il dépend de church/ et liturgy/,
+// ce que chat/ n'a pas le droit de faire — AMISACHE.md §6.1).
+//
+// Sans moteur enregistré (ou en repli quand le LLM est indisponible) :
+// correspondance par mots-clés contre les FAQ publiées (content/Faq), avec
+// un message de repli si rien ne correspond.
 // ============================================================
 import { Injectable } from '@nestjs/common';
 import { FaqService } from '../../content/services/faq.service';
 import { Faq } from '../../content/entities/faq.entity';
+import { Conversation } from '../entities/conversation.entity';
+import { BotClientContextDto } from '../dto/message.dto';
+import { MessageOption } from '../entities/message.entity';
+
+export interface BotReplyContext {
+  conversation: Conversation;
+  /** Utilisateur (HUMAN) ou visiteur (GUEST) auteur du message */
+  actorId: string;
+  body?: string;
+  clientContext?: BotClientContextDto;
+}
+
+export interface BotReply {
+  body: string;
+  /** Trace technique stockée sur Message.meta — jamais affichée */
+  meta?: Record<string, any>;
+  /** Choix cliquables affichés sous la réponse */
+  options?: MessageOption[];
+}
+
+export interface ChatBotEngine {
+  /** `null` = le bot reste silencieux (aucun message posté) */
+  reply(ctx: BotReplyContext): Promise<BotReply | null>;
+}
 
 export const CHAT_BOT_GREETING =
   "Bonjour \u{1F44B} Je suis l'assistant Amisache. Posez votre question ci-dessous — " +
@@ -32,13 +61,29 @@ const MIN_MATCH_SCORE = 1;
 
 @Injectable()
 export class ChatBotService {
+  private engine?: ChatBotEngine;
+
   constructor(private readonly faqService: FaqService) {}
 
+  registerEngine(engine: ChatBotEngine): void {
+    this.engine = engine;
+  }
+
   /** Réponse automatique à un message reçu dans une conversation BOT. */
-  async reply(messageBody: string | undefined): Promise<string> {
+  async reply(ctx: BotReplyContext): Promise<BotReply | null> {
+    if (this.engine) return this.engine.reply(ctx);
+    return { body: await this.keywordReply(ctx.body) };
+  }
+
+  /** Moteur mot-clé — aussi le repli du moteur LLM quand Mistral est indisponible. */
+  async keywordReply(messageBody: string | undefined): Promise<string> {
+    return (await this.findFaq(messageBody))?.answer ?? CHAT_BOT_FALLBACK;
+  }
+
+  /** Meilleure FAQ publiée pour `text`, ou null — réutilisée par le tool `search_faq`. */
+  async findFaq(text: string | undefined): Promise<Faq | null> {
     const faqs = await this.faqService.listPublished({});
-    const match = this.bestMatch(messageBody, faqs);
-    return match?.answer ?? CHAT_BOT_FALLBACK;
+    return this.bestMatch(text, faqs);
   }
 
   private bestMatch(text: string | undefined, faqs: Faq[]): Faq | null {

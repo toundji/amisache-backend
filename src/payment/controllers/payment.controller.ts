@@ -55,17 +55,18 @@ export class PaymentController {
   }
 
   /**
-   * GET /payments/:id — admin, engineer.
-   * ⚠️ Pas de self-service ici : Payment ne porte pas de userId direct
+   * GET /payments/:id — admin, engineer, ou clergé ACTIF de l'église
+   * concernée (déduite de paymentMethod.churchId).
+   * ⚠️ Pas de self-service fidèle ici : Payment ne porte pas de userId direct
    * (voir payment.entity.ts) ; l'accès fidèle passe par la Request/
    * Donation qui le référence.
    */
   @Get(':id')
-  @Roles(UserRole.admin, UserRole.engineer)
+  @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[Admin] Récupérer un paiement par id' })
-  getById(@Param('id') id: string) {
-    return this.paymentService.getById(id);
+  @ApiOperation({ summary: 'Récupérer un paiement par id (clergé de son église, ou admin)' })
+  getById(@GetUser() user: JwtUserInfo, @Param('id') id: string) {
+    return this.paymentService.getByIdForClergy(id, user);
   }
 
   /**

@@ -4,16 +4,22 @@
 // mes conversations, compteur de non-lus, ouverture de fil par sujet,
 // envoi de message (+ cache liste), marquage lu, handoff BOT->AGENT.
 // ============================================================
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, MoreThan, Not, Repository } from 'typeorm';
 import { FileSystemStoredFile } from 'nestjs-form-data';
 
 import { Conversation } from '../entities/conversation.entity';
 import { Participant } from '../entities/participant.entity';
-import { Message } from '../entities/message.entity';
+import { Message, MessageOption } from '../entities/message.entity';
 import { Attachment } from '../entities/attachment.entity';
-import { ActorType, AttachmentKind, ConversationMode } from '../../shared/common.enum';
+import {
+  ActorType,
+  AttachmentKind,
+  ConversationMode,
+  ConversationStatus,
+  MessageKind,
+} from '../../shared/common.enum';
 import { ParticipantRole } from '../chat.enum';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { ApiFsUtils } from '../../utils/api-fs';
@@ -24,6 +30,7 @@ import {
   PaginatedConversations,
 } from '../dto/conversation.dto';
 import {
+  BotClientContextDto,
   ListMessagesQuery,
   PaginatedMessages,
   SendMessageDto,
@@ -38,6 +45,16 @@ const PREVIEW_MAX_LENGTH = 140;
 /** Sujet conventionnel des conversations ouvertes par la bulle publique (visiteurs anonymes). */
 const GUEST_SUBJECT_TYPE = 'guest-widget';
 
+/**
+ * Sujet conventionnel de la conversation assistant d'un utilisateur connecté
+ * (widget du portail) — une seule par utilisateur, `subjectId` = son userId.
+ */
+export const BOT_WIDGET_SUBJECT_TYPE = 'bot-widget';
+
+/** Messages système diffusés au fidèle lors d'un changement de mode */
+const HANDOFF_MESSAGE = "Un membre de l'équipe a pris le relais et vous répondra ici.";
+const RELEASE_MESSAGE = "L'assistant reprend la conversation.";
+
 export interface Actor {
   actorId: string;
   actorType: ActorType;
@@ -45,6 +62,8 @@ export interface Actor {
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
@@ -62,7 +81,7 @@ export class ChatService {
   private toRealtimeSummary(conversation: Pick<
     Conversation,
     'id' | 'status' | 'mode' | 'lastMessageAt' | 'lastMessagePreview' | 'lastMessageSenderId'
-  >) {
+  > & Partial<Pick<Conversation, 'escalatedAt' | 'escalationReason' | 'escalatedChurchId'>>) {
     return {
       id: conversation.id,
       status: conversation.status,
@@ -70,10 +89,17 @@ export class ChatService {
       lastMessageAt: conversation.lastMessageAt,
       lastMessagePreview: conversation.lastMessagePreview,
       lastMessageSenderId: conversation.lastMessageSenderId,
+      escalatedAt: conversation.escalatedAt ?? null,
+      escalationReason: conversation.escalationReason ?? null,
+      escalatedChurchId: conversation.escalatedChurchId ?? null,
     };
   }
 
-  private async emitConversationUpdated(conversationId: string): Promise<void> {
+  /** `extraUserIds` : destinataires hors room de la conversation (ex. clergé notifié d'une escalade). */
+  async emitConversationUpdated(
+    conversationId: string,
+    extraUserIds: string[] = [],
+  ): Promise<void> {
     const conversation = await this.conversationRepo.findOne({
       where: { id: conversationId },
     });
@@ -82,6 +108,9 @@ export class ChatService {
     const payload = { conversation: this.toRealtimeSummary(conversation) };
     this.realtime.emitToConversation(conversationId, 'conversation:updated', payload);
     this.realtime.emitToAdmins('conversation:updated', payload);
+    for (const userId of extraUserIds) {
+      this.realtime.emitToUser(userId, 'conversation:updated', payload);
+    }
   }
 
   // ── Validation acteur (voir note polymorphisme du prompt chat) ──
@@ -181,6 +210,19 @@ export class ChatService {
   ): Promise<Conversation> {
     await this.validateActor(initiator);
 
+    const isBotWidget = dto.subjectType === BOT_WIDGET_SUBJECT_TYPE;
+    if (isBotWidget) {
+      // Une seule conversation assistant par utilisateur, qui ne peut ouvrir
+      // que la sienne — sinon un `subjectId` deviné ferait entrer dans le fil d'un autre.
+      if (initiator.actorType !== ActorType.HUMAN || dto.subjectId !== initiator.actorId) {
+        throw new ApiError("Conversation assistant d'un autre utilisateur.", {
+          code: HttpStatus.FORBIDDEN,
+          displayable: true,
+        });
+      }
+      dto = { subjectType: dto.subjectType, subjectId: dto.subjectId, mode: ConversationMode.BOT };
+    }
+
     if (dto.subjectType && dto.subjectId) {
       const existing = await this.conversationRepo.findOne({
         where: { subjectType: dto.subjectType, subjectId: dto.subjectId },
@@ -228,7 +270,21 @@ export class ChatService {
       conversation: this.toRealtimeSummary(conversation),
     });
 
+    if (isBotWidget) {
+      await this.postBotMessage(conversation.id, CHAT_BOT_GREETING);
+      return this.getConversationOrFail(conversation.id);
+    }
+
     return conversation;
+  }
+
+  /** Ajoute un participant s'il ne l'est pas déjà (ex. clergé destinataire d'une escalade). */
+  async addParticipant(
+    conversationId: string,
+    actor: Actor,
+    role: ParticipantRole,
+  ): Promise<void> {
+    await this.ensureParticipant(conversationId, actor, role);
   }
 
   private async ensureParticipant(
@@ -348,18 +404,37 @@ export class ChatService {
     this.realtime.emitToConversation(conversationId, 'message:new', { message });
     await this.emitConversationUpdated(conversationId);
 
-    // Seul le visiteur (GUEST, bulle publique) doit déclencher une réponse du
-    // bot — jamais un HUMAN : sur ce projet, HUMAN désigne toujours un membre
-    // du clergé/staff répondant via le panel (ChatController), pas le
-    // visiteur (cf. ChatService.sendGuestMessage, toujours GUEST). Avant ce
-    // fix, un membre du clergé qui répondait sans avoir d'abord fait le
-    // handoff (mode toujours BOT) déclenchait le message de repli du bot
-    // juste après sa propre réponse — signalé par l'utilisateur.
-    if (sender.actorType === ActorType.GUEST) {
-      await this.autoReplyIfBot(conversation, dto.body);
-    }
+    this.triggerBotReply(conversation, sender, dto.body, dto.context);
 
     return message;
+  }
+
+  /**
+   * Seul le demandeur déclenche une réponse du bot : le visiteur (GUEST,
+   * bulle publique) ou le propriétaire d'une conversation `bot-widget`
+   * (utilisateur connecté). Jamais un autre HUMAN — un membre du clergé qui
+   * répondait depuis le panel sans avoir fait le handoff (mode toujours BOT)
+   * déclenchait sinon le bot juste après sa propre réponse.
+   *
+   * Non bloquant : la réponse (jusqu'à 30 s avec le LLM) arrive par socket
+   * (`message:new`), la requête HTTP d'envoi n'attend pas.
+   */
+  private triggerBotReply(
+    conversation: Conversation,
+    sender: Actor,
+    body?: string,
+    clientContext?: BotClientContextDto,
+  ): void {
+    const isRequester =
+      sender.actorType === ActorType.GUEST ||
+      (sender.actorType === ActorType.HUMAN &&
+        conversation.subjectType === BOT_WIDGET_SUBJECT_TYPE &&
+        conversation.subjectId === sender.actorId);
+    if (!isRequester) return;
+
+    this.autoReplyIfBot(conversation, sender.actorId, body, clientContext).catch(
+      (error) => this.logger.error('Réponse automatique du bot en échec', error as Error),
+    );
   }
 
   // ── Envoi de message + fichiers en une requête (multipart) ────
@@ -417,11 +492,7 @@ export class ChatService {
     this.realtime.emitToConversation(conversationId, 'message:new', { message });
     await this.emitConversationUpdated(conversationId);
 
-    // Même règle que sendMessage() ci-dessus — seul le visiteur (GUEST)
-    // déclenche une réponse du bot.
-    if (sender.actorType === ActorType.GUEST) {
-      await this.autoReplyIfBot(conversation, dto.body);
-    }
+    this.triggerBotReply(conversation, sender, dto.body);
 
     return message;
   }
@@ -585,7 +656,7 @@ export class ChatService {
     });
   }
 
-  // ── Handoff BOT -> AGENT (sans émission système) ──────────
+  // ── Handoff BOT -> AGENT ──────────────────────────────────
 
   async handoff(conversationId: string, dto: HandoffDto): Promise<Participant> {
     await this.getConversationOrFail(conversationId);
@@ -594,13 +665,21 @@ export class ChatService {
       actorType: dto.toActorType,
     });
 
-    const bot = await this.getActiveParticipant(
-      conversationId,
-      dto.fromActorId,
-    );
+    const bot = dto.fromActorId
+      ? await this.getActiveParticipant(conversationId, dto.fromActorId)
+      : null;
 
     const agent = await this.dataSource.transaction(async (manager) => {
-      await manager.update(Participant, bot.id, { leftAt: new Date() });
+      if (bot) await manager.update(Participant, bot.id, { leftAt: new Date() });
+
+      // Déjà participant (ex. clergé ajouté lors d'une escalade) : on garde sa ligne.
+      const existing = await manager.findOne(Participant, {
+        where: { conversationId, actorId: dto.toActorId, leftAt: IsNull() },
+      });
+      if (existing) {
+        await manager.update(Conversation, conversationId, { mode: ConversationMode.AGENT });
+        return existing;
+      }
 
       const agent = await manager.save(
         manager.create(Participant, {
@@ -618,34 +697,99 @@ export class ChatService {
       return agent;
     });
 
-    await this.emitConversationUpdated(conversationId);
+    await this.postMessage(conversationId, ActorType.SYSTEM, HANDOFF_MESSAGE, MessageKind.SYSTEM);
 
     return agent;
   }
 
+  // ── Retour AGENT -> BOT ───────────────────────────────────
+
+  /** L'assistant reprend la conversation : il répondra au prochain message du fidèle. */
+  async releaseToBot(conversationId: string): Promise<Conversation> {
+    const conversation = await this.getConversationOrFail(conversationId);
+    if (conversation.mode === ConversationMode.BOT) return conversation;
+
+    await this.conversationRepo.update(conversationId, { mode: ConversationMode.BOT });
+    await this.postMessage(conversationId, ActorType.SYSTEM, RELEASE_MESSAGE, MessageKind.SYSTEM);
+
+    return this.getConversationOrFail(conversationId);
+  }
+
   // ── Réponse automatique (mode BOT) ────────────────────────
   // Toujours après la transaction du message entrant, jamais dedans — un
-  // échec de génération de réponse (FAQ indisponible, etc.) ne doit jamais
+  // échec de génération de réponse (LLM indisponible, etc.) ne doit jamais
   // faire échouer l'envoi du message du fidèle/visiteur lui-même.
 
   private async autoReplyIfBot(
     conversation: Conversation,
+    actorId: string,
     incomingBody?: string,
+    clientContext?: BotClientContextDto,
   ): Promise<void> {
     if (conversation.mode !== ConversationMode.BOT) return;
 
-    const replyBody = await this.chatBotService.reply(incomingBody);
-    const reply = await this.messageRepo.save(
+    this.emitBotTyping(conversation.id, true);
+    try {
+      const reply = await this.chatBotService.reply({
+        conversation,
+        actorId,
+        body: incomingBody,
+        clientContext,
+      });
+      if (!reply?.body?.trim()) return;
+
+      // Un humain a pu prendre la main pendant la génération (handoff).
+      const current = await this.conversationRepo.findOne({ where: { id: conversation.id } });
+      if (current?.mode !== ConversationMode.BOT) return;
+
+      await this.postBotMessage(conversation.id, reply.body, reply.meta, reply.options);
+    } finally {
+      this.emitBotTyping(conversation.id, false);
+    }
+  }
+
+  private emitBotTyping(conversationId: string, isTyping: boolean): void {
+    this.realtime.emitToConversation(conversationId, 'typing', {
+      conversationId,
+      actorId: null,
+      actorType: ActorType.AI,
+      isTyping,
+    });
+  }
+
+  /** Persiste un message du bot, met à jour le cache liste et le diffuse (sans sa trace `meta`). */
+  private postBotMessage(
+    conversationId: string,
+    body: string,
+    meta?: Record<string, any>,
+    options?: MessageOption[],
+  ): Promise<void> {
+    return this.postMessage(conversationId, ActorType.AI, body, MessageKind.TEXT, meta, options);
+  }
+
+  /** Message sans expéditeur humain (bot ou système) — persisté, cache liste mis à jour, diffusé. */
+  private async postMessage(
+    conversationId: string,
+    senderType: ActorType,
+    body: string,
+    kind: MessageKind,
+    meta?: Record<string, any>,
+    options?: MessageOption[],
+  ): Promise<void> {
+    const saved = await this.messageRepo.save(
       this.messageRepo.create({
-        conversationId: conversation.id,
-        senderType: ActorType.AI,
-        body: replyBody,
+        conversationId,
+        senderType,
+        kind,
+        body,
+        meta,
+        options: options?.length ? options : null,
       }),
     );
 
-    await this.conversationRepo.update(conversation.id, {
-      lastMessageAt: reply.createdAt,
-      lastMessagePreview: this.buildPreviewText(replyBody),
+    await this.conversationRepo.update(conversationId, {
+      lastMessageAt: saved.createdAt,
+      lastMessagePreview: this.buildPreviewText(body),
       // `undefined` serait ignoré par TypeORM (omis du SET) — `null` explicite
       // nécessaire pour que `lastMessageSenderId` ne reste pas celui du
       // message entrant (fidèle/visiteur) alors que le dernier message est
@@ -653,10 +797,53 @@ export class ChatService {
       lastMessageSenderId: null as unknown as string,
     });
 
-    this.realtime.emitToConversation(conversation.id, 'message:new', {
-      message: reply,
+    const { meta: _trace, ...message } = saved;
+    this.realtime.emitToConversation(conversationId, 'message:new', { message });
+    await this.emitConversationUpdated(conversationId);
+  }
+
+  // ── Assistant (LLM) — historique et escalade ──────────────
+  // Utilisés par le moteur de assistant/ ; chat/ ne connaît ni les
+  // paroisses ni les destinataires (AMISACHE.md §6.1).
+
+  /** Derniers messages texte non supprimés, du plus ancien au plus récent. */
+  async recentTextMessages(conversationId: string, limit: number): Promise<Message[]> {
+    const messages = await this.messageRepo.find({
+      where: {
+        conversationId,
+        kind: MessageKind.TEXT,
+        contentDeletedAt: IsNull(),
+        body: Not(IsNull()),
+      },
+      order: { createdAt: 'DESC' },
+      take: limit,
     });
-    await this.emitConversationUpdated(conversation.id);
+    return messages.reverse();
+  }
+
+  /**
+   * Marque la conversation « à traiter » (status PENDING) — le mode reste
+   * BOT. `churchId` null = équipe Amisache. Indique si elle l'était déjà
+   * (ré-escalade : le bot ne reposte rien).
+   */
+  async escalate(
+    conversationId: string,
+    reason: string,
+    churchId: string | null,
+  ): Promise<{ conversation: Conversation; alreadyEscalated: boolean }> {
+    const existing = await this.getConversationOrFail(conversationId);
+
+    await this.conversationRepo.update(conversationId, {
+      status: ConversationStatus.PENDING,
+      escalatedAt: new Date(),
+      escalationReason: reason,
+      escalatedChurchId: churchId as string,
+    });
+
+    return {
+      conversation: await this.getConversationOrFail(conversationId),
+      alreadyEscalated: !!existing.escalatedAt,
+    };
   }
 
   // ── Bulle publique (visiteur anonyme, ActorType.GUEST) ────

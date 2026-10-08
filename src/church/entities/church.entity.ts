@@ -1,7 +1,7 @@
 // ============================================================
 // AMISACHE — church.entity.ts
 // Nœud unique de la hiérarchie ecclésiale, auto-référent :
-// conférence → archidiocèse → diocèse → doyenné → paroisse →
+// conférence → archidiocèse → diocèse → vicariat → paroisse →
 // communauté → église/chapelle. Voir AMISACHE.md §1, §3 et
 // cahier-des-charges-amisache.md §4.2–4.3.
 //
@@ -26,7 +26,7 @@ import {
 import { Audit } from '../../shared/audit';
 import { Address } from '../../address/entities/address.embeddable';
 import { Country } from '../../address/entities/country.entity';
-import { EntityType, ValidationStatus } from '../church.enum';
+import { ChurchNature, EntityType, ValidationStatus, defaultNatureFor } from '../church.enum';
 import { polygonTransformer } from '../../shared/geo';
 import type { Polygon } from '../../shared/geo';
 
@@ -40,6 +40,10 @@ export class Church extends Audit {
 
   @Column()
   name!: string;
+
+  /** Lieu réel ou regroupement administratif — déduit du type si absent */
+  @Column({ type: 'enum', enum: ChurchNature, default: ChurchNature.VIRTUAL })
+  nature!: ChurchNature;
 
   /** Lien partageable de la page — unique, généré depuis `name` si absent */
   @Index({ unique: true })
@@ -121,6 +125,7 @@ export class Church extends Audit {
   @BeforeInsert()
   prepare() {
     this.name = this.name?.trim();
+    this.nature ??= defaultNatureFor(this.type);
     this.code = Church.entityCode + Date.now();
   }
 }

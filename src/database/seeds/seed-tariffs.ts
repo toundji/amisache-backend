@@ -17,7 +17,7 @@
 //     démontre que le plus spécifique gagne, pas seulement le plus proche
 //     dans l'ordre de résolution.
 //   - sainte-anne-abomey-calavi       : AUCUN tarif propre, rattachée
-//     directement à l'archidiocèse (pas de doyenné intermédiaire) — hérite
+//     directement à l'archidiocèse (pas de vicariat intermédiaire) — hérite
 //     tel quel de l'archidiocèse pour « Action de grâce »/« Repos de
 //     l'âme », et remonte jusqu'à la conférence pour « Guérison »
 //     (l'archidiocèse n'a rien défini pour ce type précis).
@@ -36,13 +36,13 @@
 // ============================================================
 import { DataSource } from 'typeorm';
 import { Church } from '../../church/entities/church.entity';
-import { Type } from '../../type/entities/type.entity';
-import { TypeScope } from '../../type/type.enum';
+import { RequestType } from '../../liturgy/entities/request-type.entity';
+import { RequestTypeScope } from '../../liturgy/request-type.enum';
 import { Tariff } from '../../liturgy/entities/tariff.entity';
 
 interface SeedTariff {
   churchSlug: string;
-  typeScope: TypeScope;
+  typeScope: RequestTypeScope;
   typeName: string;
   amount: number;
 }
@@ -51,20 +51,20 @@ const CONFERENCE_SLUG = 'conference-episcopale-du-benin';
 
 const TARIFFS: SeedTariff[] = [
   // Plancher national — dernier recours de la résolution.
-  { churchSlug: CONFERENCE_SLUG, typeScope: TypeScope.INTENTION, typeName: 'Guérison', amount: 1000 },
+  { churchSlug: CONFERENCE_SLUG, typeScope: RequestTypeScope.INTENTION, typeName: 'Guérison', amount: 1000 },
 
   // Tarifs de l'archidiocèse de Cotonou — hérités par ses paroisses.
-  { churchSlug: 'archidiocese-cotonou', typeScope: TypeScope.INTENTION, typeName: 'Action de grâce', amount: 3000 },
-  { churchSlug: 'archidiocese-cotonou', typeScope: TypeScope.INTENTION, typeName: "Repos de l'âme", amount: 2000 },
-  { churchSlug: 'archidiocese-cotonou', typeScope: TypeScope.SACRAMENT, typeName: 'Baptême', amount: 5000 },
+  { churchSlug: 'archidiocese-cotonou', typeScope: RequestTypeScope.INTENTION, typeName: 'Action de grâce', amount: 3000 },
+  { churchSlug: 'archidiocese-cotonou', typeScope: RequestTypeScope.INTENTION, typeName: "Repos de l'âme", amount: 2000 },
+  { churchSlug: 'archidiocese-cotonou', typeScope: RequestTypeScope.SACRAMENT, typeName: 'Baptême', amount: 5000 },
 
   // Tarif propre — doit l'emporter sur celui de l'archidiocèse (même type).
-  { churchSlug: 'notre-dame-des-apotres', typeScope: TypeScope.INTENTION, typeName: 'Action de grâce', amount: 2500 },
+  { churchSlug: 'notre-dame-des-apotres', typeScope: RequestTypeScope.INTENTION, typeName: 'Action de grâce', amount: 2500 },
 ];
 
 export async function seedTariffs(dataSource: DataSource): Promise<void> {
   const churchRepo = dataSource.getRepository(Church);
-  const typeRepo = dataSource.getRepository(Type);
+  const typeRepo = dataSource.getRepository(RequestType);
   const tariffRepo = dataSource.getRepository(Tariff);
 
   let created = 0;

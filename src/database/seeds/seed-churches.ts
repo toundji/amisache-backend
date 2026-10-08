@@ -70,7 +70,7 @@ const GENERIC_LOGO = commonsFile('Christian Cross icon.svg');
 interface ParoisseSeed {
   slug: string;
   name: string;
-  parentSlug: string; // doyenné ou, niveau sauté volontairement, diocèse/archidiocèse
+  parentSlug: string; // vicariat ou, niveau sauté volontairement, diocèse/archidiocèse
   zoneName: string;
   locality: string;
   coords: [number, number]; // [lng, lat]
@@ -213,16 +213,16 @@ export async function seedChurches(dataSource: DataSource, refresh: boolean): Pr
 
   await createChurch({
     slug: 'doyenne-cotonou-1',
-    name: 'Doyenné de Cotonou I',
-    type: EntityType.DOYENNE,
+    name: 'Vicariat de Cotonou I',
+    type: EntityType.VICARIAT,
     parentId: archdiocese.id,
     zoneName: 'Cotonou 1',
   });
 
   await createChurch({
     slug: 'doyenne-porto-novo',
-    name: 'Doyenné de Porto-Novo',
-    type: EntityType.DOYENNE,
+    name: 'Vicariat de Porto-Novo',
+    type: EntityType.VICARIAT,
     parentId: diocese.id,
     zoneName: 'Porto-Novo 1',
   });

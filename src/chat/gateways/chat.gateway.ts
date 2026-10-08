@@ -50,6 +50,7 @@ import {
   CHAT_ADMIN_ROOM,
   ChatRealtimeService,
   conversationRoom,
+  userRoom,
 } from '../services/chat-realtime.service';
 import { JoinConversationDto, TypingDto } from '../dto/socket.dto';
 
@@ -93,7 +94,21 @@ export class ChatGateway
 
   // ── Connexion — authentification + rooms automatiques ────────
 
+  /**
+   * Authentification en cours par socket. Le client reçoit `connect` AVANT la
+   * fin de handleConnection (vérif. blacklist Redis asynchrone) : un
+   * `join_conversation` émis aussitôt arrivait sur un socket sans identité et
+   * plantait (`actorId` undefined) — les handlers attendent donc cette promesse.
+   */
+  private readonly authenticating = new Map<string, Promise<void>>();
+
   async handleConnection(socket: Socket): Promise<void> {
+    const authentication = this.authenticate(socket);
+    this.authenticating.set(socket.id, authentication);
+    await authentication;
+  }
+
+  private async authenticate(socket: Socket): Promise<void> {
     try {
       const apiKey = this.extractApiKey(socket);
       if (!apiKey || !getApiClientType(apiKey)) {
@@ -138,6 +153,9 @@ export class ChatGateway
           conversations: new Set(),
         });
 
+        // Room personnelle — notifications ciblées (ex. escalade de l'assistant
+        // vers le clergé d'une paroisse, voir assistant/).
+        await socket.join(userRoom(jwtUser.id));
         if (isAdmin) await socket.join(CHAT_ADMIN_ROOM);
         this.logger.debug(`handleConnection OK — HUMAN:${jwtUser.id} (admin=${isAdmin})`);
         return;
@@ -163,6 +181,7 @@ export class ChatGateway
   }
 
   handleDisconnect(socket: Socket): void {
+    this.authenticating.delete(socket.id);
     const data = this.getSocketData(socket);
     if (!data) return;
 
@@ -181,6 +200,7 @@ export class ChatGateway
     @MessageBody() dto: JoinConversationDto,
   ): Promise<void> {
     try {
+      await this.authenticating.get(socket.id);
       const data = this.getSocketData(socket);
       if (!data) return;
 
@@ -301,8 +321,10 @@ export class ChatGateway
     (socket.data as ChatSocketData) = data;
   }
 
+  /** `socket.data` vaut `{}` tant que l'authentification n'a pas abouti. */
   private getSocketData(socket: Socket): ChatSocketData | undefined {
-    return socket.data as ChatSocketData | undefined;
+    const data = socket.data as ChatSocketData | undefined;
+    return data?.actorId ? data : undefined;
   }
 
   private extractApiKey(socket: Socket): string | undefined {

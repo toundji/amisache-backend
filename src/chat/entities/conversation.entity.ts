@@ -49,4 +49,17 @@ export class Conversation extends Audit {
 
   @Column({ name: 'closed_at', type: 'datetime', nullable: true })
   closedAt?: Date;
+
+  // ── Escalade par l'assistant (voir chatbot-llm-spec.md § Escalade) ──
+  // Le mode reste BOT : l'escalade signale seulement « à traiter par un humain ».
+
+  @Column({ name: 'escalated_at', type: 'datetime', nullable: true })
+  escalatedAt?: Date;
+
+  @Column({ name: 'escalation_reason', type: 'text', nullable: true })
+  escalationReason?: string;
+
+  /** UUID nu, pas de FK (chat/ reste polymorphe, AMISACHE.md §6.1) — null = équipe Amisache */
+  @Column({ name: 'escalated_church_id', nullable: true })
+  escalatedChurchId?: string;
 }

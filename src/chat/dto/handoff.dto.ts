@@ -3,14 +3,19 @@
 // DTO de la route utilitaire de transfert BOT -> AGENT.
 // N'émet aucun message SYSTEM (hors périmètre de ce lot).
 // ============================================================
-import { IsEnum, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { ActorType } from '../../shared/common.enum';
 import { ParticipantRole } from '../chat.enum';
 
 export class HandoffDto {
-  /** actorId du participant BOT actuel (celui qui reçoit leftAt) */
+  /**
+   * actorId du participant BOT actuel (celui qui reçoit leftAt). Optionnel :
+   * une conversation du widget bot (`bot-widget`) n'a pas de participant bot
+   * — seul l'agent est alors ajouté, le fidèle reste participant.
+   */
   @IsUUID()
-  fromActorId!: string;
+  @IsOptional()
+  fromActorId?: string;
 
   /** actorId de l'agent qui prend le relais */
   @IsUUID()
