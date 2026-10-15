@@ -31,12 +31,12 @@ export class Tariff extends Audit {
   amount?: string | null;
 
   /**
-   * Délai minimum (jours) avant la date souhaitée — null : se résout plus
-   * haut dans la hiérarchie, puis `Type.minLeadDays` (défaut plateforme).
-   * Résolu indépendamment du montant — voir TariffService.resolveMinLeadDays.
+   * Délai minimum (heures) avant la date souhaitée — null : se résout plus
+   * haut dans la hiérarchie, puis `Type.minLeadHours` (défaut plateforme).
+   * Résolu indépendamment du montant — voir TariffService.resolveMinLeadHours.
    */
-  @Column({ name: 'min_lead_days', type: 'int', nullable: true })
-  minLeadDays?: number | null;
+  @Column({ name: 'min_lead_hours', type: 'int', nullable: true })
+  minLeadHours?: number | null;
 
   /** Désactivé = ignoré par la résolution (comme s'il n'existait pas). */
   @Column({ default: true })

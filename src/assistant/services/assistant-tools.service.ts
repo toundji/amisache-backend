@@ -21,7 +21,12 @@ import { Church } from '../../church/entities/church.entity';
 import { User } from '../../users/entities/user.entity';
 import { Schedule } from '../../liturgy/entities/schedule.entity';
 import { ScheduleFrequency } from '../../liturgy/liturgy.enum';
-import { isValidScheduleOccurrence } from '../../liturgy/liturgy.util';
+import {
+  earliestRequestLocal,
+  formatLeadTime,
+  isValidScheduleOccurrence,
+  respectsLeadTime,
+} from '../../liturgy/liturgy.util';
 import { RequestService } from '../../liturgy/services/request.service';
 import { TariffService } from '../../liturgy/services/tariff.service';
 import { RequestTypeService } from '../../liturgy/services/request-type.service';
@@ -58,7 +63,7 @@ const SEARCH_LIMIT = 5;
 const UPCOMING_DEFAULT_DAYS = 14;
 const UPCOMING_MAX_DAYS = 31;
 /** Longueur max du texte d'intention (même limite que le formulaire client) */
-const REQUEST_TEXT_MAX = 250;
+const REQUEST_TEXT_MAX = 150;
 
 const DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 /** Messes proposées en boutons (les suivantes via « Autres dates ») */
@@ -398,9 +403,9 @@ export class AssistantToolsService {
     if (!church) return { error: `Paroisse introuvable : ${churchSlug}` };
 
     const types = await this.requestTypeService.listActive();
-    const [tariffs, leadDays] = await Promise.all([
+    const [tariffs, leadTimes] = await Promise.all([
       Promise.all(types.map((t) => this.tariffService.resolve(church.id, t.id))),
-      Promise.all(types.map((t) => this.tariffService.resolveMinLeadDays(church.id, t))),
+      Promise.all(types.map((t) => this.tariffService.resolveMinLeadHours(church.id, t))),
     ]);
 
     run.options = types.map((t, i) => ({
@@ -413,7 +418,7 @@ export class AssistantToolsService {
       types: types.map((t, i) => ({
         name: t.name,
         category: t.scope === RequestTypeScope.INTENTION ? 'intention de messe' : 'sacrement',
-        minLeadDays: leadDays[i].minLeadDays,
+        minLeadTime: formatLeadTime(leadTimes[i].minLeadHours),
         mustMatchMassSchedule: t.requiresScheduleMatch,
         offering: tariffs[i]?.amount ?? null,
       })),
@@ -434,9 +439,9 @@ export class AssistantToolsService {
 
     const type = typeof typeName === 'string' ? await this.findRequestType(typeName) : null;
     const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
-    // Premier jour possible : aujourd'hui + délai minimum (paroisse, sinon type), si le type est connu.
-    const leadDays = type ? (await this.tariffService.resolveMinLeadDays(church.id, type)).minLeadDays : 0;
-    const today = this.addDays(new Date().toISOString().slice(0, 10), leadDays);
+    // Premier jour possible : maintenant + délai minimum (paroisse, sinon type), si le type est connu.
+    const leadHours = type ? (await this.tariffService.resolveMinLeadHours(church.id, type)).minLeadHours : 0;
+    const today = earliestRequestLocal(leadHours).slice(0, 10);
     const start = isDay(from) && from > today ? from : today;
     const maxEnd = this.addDays(start, UPCOMING_MAX_DAYS);
     const end = isDay(to) && to >= start ? (to < maxEnd ? to : maxEnd) : this.addDays(start, UPCOMING_DEFAULT_DAYS);
@@ -451,6 +456,7 @@ export class AssistantToolsService {
     for (let day = start; day <= end; day = this.addDays(day, 1)) {
       for (const s of schedules) {
         if (!isValidScheduleOccurrence(s, day)) continue;
+        if (!respectsLeadTime(day, s.time, leadHours)) continue;
         masses.push({
           date: day,
           day: DAY_NAMES[new Date(`${day}T00:00:00Z`).getUTCDay()],

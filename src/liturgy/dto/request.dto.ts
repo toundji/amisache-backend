@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  MaxLength,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
@@ -38,6 +39,7 @@ export class CreateRequestDto {
   date!: string;
 
   @IsString()
+  @MaxLength(150)
   @IsOptional()
   text?: string;
 

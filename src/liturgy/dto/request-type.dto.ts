@@ -9,6 +9,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Max,
   Min,
   MaxLength,
 } from 'class-validator';
@@ -30,10 +31,16 @@ export class CreateRequestTypeDto {
   @IsOptional()
   allowHomeCelebration?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  allowAttachment?: boolean;
+
+  /** En heures (24 = 1 jour, 168 = 1 semaine) — 1 an au plus. */
   @IsInt()
   @Min(0)
+  @Max(8760)
   @IsOptional()
-  minLeadDays?: number;
+  minLeadHours?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -58,10 +65,16 @@ export class UpdateRequestTypeDto {
   @IsOptional()
   allowHomeCelebration?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  allowAttachment?: boolean;
+
+  /** En heures (24 = 1 jour, 168 = 1 semaine) — 1 an au plus. */
   @IsInt()
   @Min(0)
+  @Max(8760)
   @IsOptional()
-  minLeadDays?: number;
+  minLeadHours?: number;
 
   @IsBoolean()
   @IsOptional()

@@ -58,6 +58,25 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-10-15 — Délai minimum en heures, pièce jointe par type, chiffres du dashboard
+- **Délai en heures** (demandé : « heure, jour ou même semaine ») : `RequestType.minLeadDays`/
+  `Tariff.minLeadDays` → `minLeadHours` (défaut 48). Route `GET /tariffs/min-lead-days` →
+  `GET /tariffs/min-lead-hours`. Règle (`liturgy.util.ts` `respectsLeadTime`) : premier instant
+  admis = maintenant + délai (heure Bénin) ; sans heure connue, le jour de cet instant est
+  accepté (identique à l'ancien délai en jours pour un multiple de 24 h) ; avec `scheduleId`,
+  l'heure de la messe compte aussi. L'assistant écarte les messes trop proches et affiche le
+  délai en clair (`minLeadTime`). Max 8760 h.
+- **Pièce jointe** : nouveau `RequestType.allowAttachment` (défaut `false`) — `validate()`
+  refuse `attachments` si le type ne l'autorise pas. Réglé depuis le panel.
+- **Précisions** : `CreateRequestDto.text` limité à 150 caractères (portail et assistant aussi).
+- **`GET /dashboard/stats`** (nouveau module `dashboard/`, en bout de chaîne) : demandes
+  reçues/en cours, paiements à confirmer, publications en ligne, églises (+ à valider).
+  Sans `churchId` : plateforme, admin/engineer ; avec : une église, clergé actif ou admin.
+- **Conséquences** : migration `RequestLeadHoursAndAttachment` (écrite à la main, convertit
+  les valeurs existantes × 24) **non appliquée**. `tsc` propre ; jest ne démarre pas
+  (erreur ESM préexistante, déjà le cas sans ces changements). À déployer avec le portail et
+  le panel (même date) : migration → backend → client/panel.
+
 ### 2026-10-02 — Test Ollama (VPS) annulé
 - **Décision** (demandée) : test abandonné, Ollama retiré du serveur. Supprimés :
   `ollama.client.ts` (+ spec), `ollama.prompt.ts`, le choix de client dans

@@ -30,9 +30,13 @@ export class RequestType extends Audit {
   @Column({ default: false, name: 'allow_home_celebration' })
   allowHomeCelebration!: boolean;
 
-  /** Délai minimum, en jours, entre l'envoi d'une demande et la date souhaitée. */
-  @Column({ type: 'int', default: 2, name: 'min_lead_days' })
-  minLeadDays!: number;
+  /** Le fidèle peut-il joindre un fichier (prière, texte...) ? Désactivé par défaut. */
+  @Column({ default: false, name: 'allow_attachment' })
+  allowAttachment!: boolean;
+
+  /** Délai minimum, en heures, entre l'envoi d'une demande et la date souhaitée (48 = 2 jours). */
+  @Column({ type: 'int', default: 48, name: 'min_lead_hours' })
+  minLeadHours!: number;
 
   /** La date souhaitée doit-elle correspondre à une messe déjà programmée (Schedule) ? */
   @Column({ default: false, name: 'requires_schedule_match' })

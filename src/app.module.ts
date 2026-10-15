@@ -42,6 +42,7 @@ import { PaymentModule } from './payment/payment.module';
 import { LiturgyModule } from './liturgy/liturgy.module';
 import { CommunityModule } from './community/community.module';
 import { AssistantModule } from './assistant/assistant.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -131,6 +132,7 @@ import { AssistantModule } from './assistant/assistant.module';
     LiturgyModule,
     CommunityModule,
     AssistantModule, // assistant LLM du chat — après chat/ et church/ (chatbot-llm-spec.md)
+    DashboardModule, // chiffres de l'accueil du panel — lit les tables métier, rien n'en dépend
 
     // Notifications : module abstrait, channels enregistrés par le projet.
     // Défaut = in-app uniquement (persistance + GET /notifications). Pour

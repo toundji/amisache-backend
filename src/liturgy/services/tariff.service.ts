@@ -17,7 +17,7 @@ import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import {
   CreateTariffDto,
   ListTariffQuery,
-  ResolvedMinLeadDays,
+  ResolvedMinLeadHours,
   ResolvedTariff,
   UpdateTariffDto,
 } from '../dto/tariff.dto';
@@ -58,31 +58,31 @@ export class TariffService {
    * Délai minimum applicable pour (churchId, type) — même repli que
    * `resolve`, mais indépendant du montant (l'offrande peut venir du
    * diocèse et le délai de la paroisse). Aucun délai dans la hiérarchie →
-   * `RequestType.minLeadDays`, la valeur par défaut de la plateforme.
+   * `RequestType.minLeadHours`, la valeur par défaut de la plateforme.
    */
-  async resolveMinLeadDays(churchId: string, type: RequestType): Promise<ResolvedMinLeadDays> {
-    const found = await this.findInHierarchy(churchId, type.id, 'minLeadDays');
+  async resolveMinLeadHours(churchId: string, type: RequestType): Promise<ResolvedMinLeadHours> {
+    const found = await this.findInHierarchy(churchId, type.id, 'minLeadHours');
     return found
       ? {
-          minLeadDays: found.tariff.minLeadDays!,
+          minLeadHours: found.tariff.minLeadHours!,
           definedByChurchId: found.church.id,
           definedByChurchName: found.church.name,
         }
-      : { minLeadDays: type.minLeadDays, definedByChurchId: null, definedByChurchName: null };
+      : { minLeadHours: type.minLeadHours, definedByChurchId: null, definedByChurchName: null };
   }
 
-  /** GET /tariffs/min-lead-days — vérifie le type avant de résoudre. */
-  async resolveMinLeadDaysById(churchId: string, typeId: string): Promise<ResolvedMinLeadDays> {
+  /** GET /tariffs/min-lead-hours — vérifie le type avant de résoudre. */
+  async resolveMinLeadHoursById(churchId: string, typeId: string): Promise<ResolvedMinLeadHours> {
     await this.churchService.getById(churchId); // 404 propre si churchId invalide
     const type = await this.requestTypeService.getById(typeId); // 404 propre si typeId invalide
-    return this.resolveMinLeadDays(churchId, type);
+    return this.resolveMinLeadHours(churchId, type);
   }
 
   /**
    * Premier tarif actif définissant `field` pour ce type, sur l'église puis
    * ses ancêtres (`Church.parentId`, en remontant).
    */
-  private async findInHierarchy(churchId: string, typeId: string, field: 'amount' | 'minLeadDays') {
+  private async findInHierarchy(churchId: string, typeId: string, field: 'amount' | 'minLeadHours') {
     let currentId: string | undefined = churchId;
 
     for (let hop = 0; currentId && hop < MAX_RESOLUTION_HOPS; hop++) {
@@ -139,7 +139,7 @@ export class TariffService {
       throw new ApiError('Un tarif existe déjà pour ce type dans cette église — modifiez-le plutôt.');
     }
 
-    if (body.amount == null && body.minLeadDays == null) {
+    if (body.amount == null && body.minLeadHours == null) {
       throw new ApiError('Indiquez au moins un montant ou un délai minimum.');
     }
 
@@ -147,7 +147,7 @@ export class TariffService {
       church: { id: body.churchId } as any,
       type: { id: body.typeId } as any,
       amount: body.amount != null ? body.amount.toFixed(2) : null,
-      minLeadDays: body.minLeadDays ?? null,
+      minLeadHours: body.minLeadHours ?? null,
     });
     return this.tariffRepo.save(tariff);
   }
@@ -156,14 +156,14 @@ export class TariffService {
     const existing = await this.getById(id);
     await this.clergyMemberService.assertAuthorizedForChurch(user, existing.churchId);
     const amount = body.amount !== undefined ? (body.amount?.toFixed(2) ?? null) : existing.amount;
-    const minLeadDays = body.minLeadDays !== undefined ? body.minLeadDays : existing.minLeadDays;
-    if (amount == null && minLeadDays == null) {
+    const minLeadHours = body.minLeadHours !== undefined ? body.minLeadHours : existing.minLeadHours;
+    if (amount == null && minLeadHours == null) {
       throw new ApiError('Indiquez au moins un montant ou un délai minimum — ou supprimez ce tarif.');
     }
 
     await this.tariffRepo.update(id, {
       amount,
-      minLeadDays,
+      minLeadHours,
       ...(body.active !== undefined ? { active: body.active } : {}),
     });
     return this.getById(id);

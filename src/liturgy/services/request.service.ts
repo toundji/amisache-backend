@@ -9,7 +9,7 @@ import { Repository } from 'typeorm';
 
 import { Request } from '../entities/request.entity';
 import { RequestStatus } from '../liturgy.enum';
-import { isValidScheduleOccurrence } from '../liturgy.util';
+import { formatLeadTime, isValidScheduleOccurrence, respectsLeadTime } from '../liturgy.util';
 import { ScheduleService } from './schedule.service';
 import { ChurchService } from '../../church/services/church.service';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
@@ -122,7 +122,10 @@ export class RequestService {
    * refuser exactement les mêmes demandes que le formulaire.
    */
   async validate(
-    body: Pick<CreateRequestDto, 'churchId' | 'typeId' | 'date' | 'scheduleId' | 'homeAddress'>,
+    body: Pick<
+      CreateRequestDto,
+      'churchId' | 'typeId' | 'date' | 'scheduleId' | 'homeAddress' | 'attachments'
+    >,
   ): Promise<RequestType> {
     await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
     const type = await this.requestTypeService.getById(body.typeId); // 404 propre si typeId invalide
@@ -135,17 +138,10 @@ export class RequestService {
       );
     }
 
-    // Délai minimum avant la date souhaitée — fixé par la paroisse (ou un
-    // ancêtre), sinon celui du type (mariage, baptême... demandent plus de
-    // préparation qu'une intention simple).
-    const { minLeadDays } = await this.tariffService.resolveMinLeadDays(body.churchId, type);
-    const minDate = this.addDays(this.today(), minLeadDays);
-    if (body.date < minDate) {
-      throw new ApiError(
-        minLeadDays > 0
-          ? `« ${type.name} » doit être demandé au moins ${minLeadDays} jour(s) avant la date souhaitée.`
-          : `La date souhaitée ne peut pas être antérieure à aujourd'hui.`,
-      );
+    // Pièce jointe — désactivée par défaut, activée type par type depuis le
+    // panel (RequestType.allowAttachment).
+    if (body.attachments && !type.allowAttachment) {
+      throw new ApiError(`« ${type.name} » n'accepte pas de pièce jointe.`);
     }
 
     // La date doit correspondre à une messe déjà programmée par cette
@@ -160,6 +156,7 @@ export class RequestService {
       }
     }
 
+    let scheduleTime: string | undefined;
     if (body.scheduleId) {
       const schedule = await this.scheduleService.getById(body.scheduleId);
       if (schedule.churchId !== body.churchId) {
@@ -170,6 +167,20 @@ export class RequestService {
           'La date choisie ne correspond à aucune occurrence de cet horaire.',
         );
       }
+      scheduleTime = schedule.time;
+    }
+
+    // Délai minimum (en heures) avant la date souhaitée — fixé par la
+    // paroisse (ou un ancêtre), sinon celui du type (mariage, baptême...
+    // demandent plus de préparation qu'une intention simple). L'heure de la
+    // messe compte quand elle est connue (scheduleId).
+    const { minLeadHours } = await this.tariffService.resolveMinLeadHours(body.churchId, type);
+    if (!respectsLeadTime(body.date, scheduleTime, minLeadHours)) {
+      throw new ApiError(
+        minLeadHours > 0
+          ? `« ${type.name} » doit être demandé au moins ${formatLeadTime(minLeadHours)} à l'avance.`
+          : `La date souhaitée ne peut pas être déjà passée.`,
+      );
     }
     return type;
   }
@@ -207,17 +218,6 @@ export class RequestService {
       paymentId,
     });
     return this.requestRepo.save(request);
-  }
-
-  /** Date du jour au format YYYY-MM-DD (comparable directement à `Request.date`, une simple chaîne). */
-  private today(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  private addDays(dateStr: string, days: number): string {
-    const date = new Date(`${dateStr}T00:00:00Z`);
-    date.setUTCDate(date.getUTCDate() + days);
-    return date.toISOString().slice(0, 10);
   }
 
   /**

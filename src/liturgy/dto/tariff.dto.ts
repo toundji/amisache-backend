@@ -18,11 +18,12 @@ export class CreateTariffDto {
   @IsOptional()
   amount?: number;
 
+  /** Délai minimum en heures (24 = 1 jour, 168 = 1 semaine). */
   @IsInt()
   @Min(0)
-  @Max(365)
+  @Max(8760)
   @IsOptional()
-  minLeadDays?: number;
+  minLeadHours?: number;
 }
 
 export class UpdateTariffDto {
@@ -35,9 +36,9 @@ export class UpdateTariffDto {
   /** null = retirer le délai (il se résout alors plus haut) */
   @IsInt()
   @Min(0)
-  @Max(365)
+  @Max(8760)
   @IsOptional()
-  minLeadDays?: number | null;
+  minLeadHours?: number | null;
 
   @IsBoolean()
   @IsOptional()
@@ -56,9 +57,9 @@ export interface ResolvedTariff {
   definedByChurchName: string;
 }
 
-/** Réponse de GET /tariffs/min-lead-days — toujours une valeur (repli final : Type.minLeadDays). */
-export interface ResolvedMinLeadDays {
-  minLeadDays: number;
+/** Réponse de GET /tariffs/min-lead-hours — toujours une valeur (repli final : Type.minLeadHours). */
+export interface ResolvedMinLeadHours {
+  minLeadHours: number;
   /** Église qui a fixé ce délai — null : valeur par défaut du type (plateforme). */
   definedByChurchId: string | null;
   definedByChurchName: string | null;

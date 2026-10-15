@@ -99,3 +99,42 @@ export function nextScheduleOccurrence(
 
   return undefined;
 }
+
+// ============================================================
+// Délai minimum d'une demande (RequestType/Tariff.minLeadHours) — en heures,
+// pour couvrir aussi bien « 12 heures » que « 3 jours » ou « 2 semaines ».
+// Même simplification de fuseau que ci-dessus : les dates/heures d'une
+// demande sont des valeurs locales Bénin.
+// ============================================================
+
+/** Premier instant (heure locale Bénin, sous forme `YYYY-MM-DDTHH:mm`) admis pour une demande. */
+export function earliestRequestLocal(minLeadHours: number, now = new Date()): string {
+  const local = new Date(now.getTime() + (BENIN_UTC_OFFSET_HOURS + Math.max(0, minLeadHours)) * 3600 * 1000);
+  return local.toISOString().slice(0, 16);
+}
+
+/**
+ * La date souhaitée (et l'heure de la messe, si connue) respecte-t-elle le
+ * délai ? Sans heure, seul le jour compte : le jour du premier instant admis
+ * est accepté (comportement identique à l'ancien délai en jours pour un
+ * multiple de 24 h).
+ */
+export function respectsLeadTime(
+  date: string,
+  time: string | undefined,
+  minLeadHours: number,
+  now = new Date(),
+): boolean {
+  const earliest = earliestRequestLocal(minLeadHours, now);
+  const earliestDay = earliest.slice(0, 10);
+  if (date !== earliestDay) return date > earliestDay;
+  return !time || time.slice(0, 5) >= earliest.slice(11, 16);
+}
+
+/** Libellé lisible d'un délai en heures — « 3 jours », « 2 semaines », « 12 heures ». */
+export function formatLeadTime(hours: number): string {
+  const plural = (n: number, unit: string) => `${n} ${unit}${n > 1 ? 's' : ''}`;
+  if (hours > 0 && hours % 168 === 0) return plural(hours / 168, 'semaine');
+  if (hours > 0 && hours % 24 === 0) return plural(hours / 24, 'jour');
+  return plural(hours, 'heure');
+}
