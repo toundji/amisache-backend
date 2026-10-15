@@ -6,7 +6,7 @@ import { NoKey, Public } from './core/decorators/api.decorator';
 @ApiTags('App')
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly appService: AppService) { }
 
   @Get()
   @Public()
