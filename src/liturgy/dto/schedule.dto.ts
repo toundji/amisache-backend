@@ -130,6 +130,12 @@ export interface ListNearbyScheduleQuery {
   limit?: number;
   /** Filtre sur un Type scope SCHEDULE (ex. « Confession ») — facultatif */
   typeId?: string;
+  /**
+   * Avec `radiusKm` : si aucune célébration dans le rayon, renvoie celles des
+   * églises les plus proches, quelle que soit la distance (même hors du pays),
+   * triées par distance croissante — jamais vide tant qu'un horaire existe.
+   */
+  nearestIfEmpty?: boolean | string;
 }
 
 /** Réponse de GET /schedules/nearby — une occurrence à venir, toutes églises confondues. */

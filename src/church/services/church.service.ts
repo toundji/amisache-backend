@@ -116,12 +116,18 @@ export class ChurchService {
    * filtre de rayon passe par `HAVING` (pas `WHERE`) car MySQL ne permet
    * pas de référencer un alias de SELECT ailleurs qu'en HAVING/ORDER BY.
    */
-  /** `radiusKm` omis = aucune limite de distance (églises géolocalisées seulement). */
+  /**
+   * `radiusKm` omis = aucune limite de distance (églises géolocalisées seulement).
+   * `withSchedules` = seulement les églises ayant au moins un horaire (du type
+   * `scheduleTypeId` si fourni) — lu en SQL direct sur `schedules`, sans
+   * importer `liturgy/` (même principe que `GroupService.stats`).
+   */
   async findNearby(
     lat: number,
     lng: number,
     radiusKm: number | undefined,
     limit: number,
+    options: { withSchedules?: boolean; scheduleTypeId?: string } = {},
   ): Promise<{ church: Church; distanceKm: number }[]> {
     const qb = this.churchRepo
       .createQueryBuilder('c')
@@ -131,11 +137,19 @@ export class ChurchService {
       )
       .where('c.status = :status', { status: ValidationStatus.APPROVED })
       .andWhere('c.location IS NOT NULL');
+    if (options.withSchedules) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM schedules s WHERE s.church_id = c.id AND s.deleted_at IS NULL${
+          options.scheduleTypeId ? ' AND s.type_id = :scheduleTypeId' : ''
+        })`,
+        { scheduleTypeId: options.scheduleTypeId },
+      );
+    }
     if (radiusKm !== undefined) qb.having('distanceKm <= :radiusKm');
     const { entities, raw } = await qb
       .orderBy('distanceKm', 'ASC')
       .limit(limit)
-      .setParameters({ lat, lng, radiusKm })
+      .setParameters({ lat, lng, radiusKm, scheduleTypeId: options.scheduleTypeId })
       .getRawAndEntities();
 
     return entities.map((church, i) => ({ church, distanceKm: Number(raw[i].distanceKm) }));

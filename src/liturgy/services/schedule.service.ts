@@ -72,6 +72,8 @@ export class ScheduleService {
    * Sans `radiusKm` : aucune limite de distance — églises géolocalisées (100
    * plus proches) + églises sans localisation (distanceKm null), qui sinon
    * n'apparaîtraient jamais.
+   * `nearestIfEmpty` + `radiusKm` : rayon vide → églises géolocalisées les plus
+   * proches ayant un horaire, sans limite de distance, triées par distance.
    */
   async nearby(query: ListNearbyScheduleQuery): Promise<NearbySchedule[]> {
     const lat = Number(query.lat);
@@ -82,12 +84,44 @@ export class ScheduleService {
     const radiusKm = query.radiusKm ? Number(query.radiusKm) : undefined;
     const limit = query.limit ? Math.min(50, Number(query.limit)) : 6;
 
+    const results = await this.nearbyWithin(lat, lng, radiusKm, query.typeId);
+    const nearestIfEmpty = query.nearestIfEmpty === true || query.nearestIfEmpty === 'true';
+    if (results.length > 0 || radiusKm === undefined || !nearestIfEmpty) {
+      results.sort((a, b) => a.occurrenceAt.localeCompare(b.occurrenceAt));
+      return results.slice(0, limit);
+    }
+
+    const nearest = await this.churchService.findNearby(lat, lng, undefined, 30, {
+      withSchedules: true,
+      scheduleTypeId: query.typeId,
+    });
+    const fallback = await this.occurrencesFor(nearest, query.typeId);
+    fallback.sort(
+      (a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0) || a.occurrenceAt.localeCompare(b.occurrenceAt),
+    );
+    return fallback.slice(0, limit);
+  }
+
+  private async nearbyWithin(
+    lat: number,
+    lng: number,
+    radiusKm: number | undefined,
+    typeId?: string,
+  ): Promise<NearbySchedule[]> {
     const nearbyChurches: { church: Church; distanceKm: number | null }[] =
       await this.churchService.findNearby(lat, lng, radiusKm, radiusKm === undefined ? 100 : 30);
     if (radiusKm === undefined) {
       const unlocated = await this.churchService.findUnlocated(100);
       nearbyChurches.push(...unlocated.map((church) => ({ church, distanceKm: null })));
     }
+    return this.occurrencesFor(nearbyChurches, typeId);
+  }
+
+  /** Prochaine occurrence de chaque horaire des églises données (non triées). */
+  private async occurrencesFor(
+    nearbyChurches: { church: Church; distanceKm: number | null }[],
+    typeId?: string,
+  ): Promise<NearbySchedule[]> {
     if (nearbyChurches.length === 0) return [];
 
     const churchIds = nearbyChurches.map(({ church }) => church.id);
@@ -97,7 +131,7 @@ export class ScheduleService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.type', 'type')
       .where('s.churchId IN (:...churchIds)', { churchIds });
-    if (query.typeId) qb.andWhere('s.typeId = :typeId', { typeId: query.typeId });
+    if (typeId) qb.andWhere('s.typeId = :typeId', { typeId });
     const schedules = await qb.getMany();
 
     const now = new Date();
@@ -126,9 +160,7 @@ export class ScheduleService {
         typeName: schedule.type?.name,
       });
     }
-
-    results.sort((a, b) => a.occurrenceAt.localeCompare(b.occurrenceAt));
-    return results.slice(0, limit);
+    return results;
   }
 
   async getById(id: string): Promise<Schedule> {

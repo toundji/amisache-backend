@@ -66,6 +66,12 @@ export class ScheduleController {
   @ApiQuery({ name: 'radiusKm', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'typeId', required: false, type: String })
+  @ApiQuery({
+    name: 'nearestIfEmpty',
+    required: false,
+    type: Boolean,
+    description: 'Rayon vide → églises les plus proches, sans limite de distance, triées par distance',
+  })
   nearby(@Query() query: ListNearbyScheduleQuery) {
     return this.scheduleService.nearby(query);
   }

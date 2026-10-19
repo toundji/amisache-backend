@@ -58,6 +58,15 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-10-19 — `/schedules/nearby?nearestIfEmpty=true` : repli sur les églises les plus proches
+- **Décision** (demandé, accueil du portail) : avec `radiusKm`, si aucune célébration dans le
+  rayon, `nearestIfEmpty=true` renvoie celles des 30 églises géolocalisées les plus proches
+  **ayant au moins un horaire** (du `typeId` si fourni), sans limite de distance, triées par
+  distance croissante puis par horaire. `ChurchService.findNearby` gagne une option
+  `withSchedules` (`EXISTS` en SQL direct sur `schedules`, sans importer `liturgy/`).
+  Sans le paramètre, comportement inchangé (`/messes`, assistant).
+- **Conséquences** : aucune migration. `tsc` propre. Non testé contre la base ni déployé.
+
 ### 2026-10-15 — Délai minimum en heures, pièce jointe par type, chiffres du dashboard
 - **Délai en heures** (demandé : « heure, jour ou même semaine ») : `RequestType.minLeadDays`/
   `Tariff.minLeadDays` → `minLeadHours` (défaut 48). Route `GET /tariffs/min-lead-days` →
