@@ -52,6 +52,21 @@ export function isValidScheduleOccurrence(
   }
 }
 
+/**
+ * Un horaire de type « Messe… » (Messe, Messe dominicale…) — seuls ces
+ * horaires peuvent recevoir une intention de messe, pas une confession ou
+ * une adoration. Casse et accents ignorés.
+ */
+export function isMassTypeName(name?: string | null): boolean {
+  if (!name) return false;
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .startsWith('messe');
+}
+
 // ============================================================
 // nextScheduleOccurrence — prochaine occurrence future d'un Schedule,
 // utilisée par ScheduleService.nearby (« Messes autour de vous »).

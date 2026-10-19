@@ -58,6 +58,29 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-10-19 — Demande : messe du programme obligatoire, offrande obligatoire sauf tarif 0
+- **Décision** (demandé) :
+  - `RequestService.validate` : pour un type `INTENTION` (ou `requiresScheduleMatch`), un
+    `scheduleId` est **obligatoire** et doit être un horaire de messe de l'église
+    (`isMassTypeName` : type d'horaire commençant par « Messe », casse/accents ignorés — pas
+    une confession ou une adoration) ; la date doit en être une occurrence (règle existante).
+    Église sans messe publiée → refus. Remplace l'ancien repli « date libre si aucun horaire ».
+  - `RequestService.create` : offrande **obligatoire** (« L'offrande est obligatoire pour cette
+    demande. ») sauf si le tarif résolu vaut 0 — la demande est alors gratuite et aucun
+    `Payment` n'est créé, même si le client en envoie un.
+  - `GET /schedules/mass-slots?churchId=&leadHours=&days=` (public) : messes datées à venir
+    (60 jours par défaut, 120 max) après le délai — alimente le formulaire du portail.
+    `GET /schedules?churchId=` charge désormais la relation `type`.
+  - Assistant : `get_upcoming_masses`/`prepare_request` ne proposent que des messes pour une
+    intention.
+- **Conséquences** : aucune migration. `tsc` propre. Vérifié en HTTP sur une base locale
+  (Docker, schéma synchronisé depuis les entités — les migrations ne rejouent pas sur une base
+  vierge, drift connu) : sans messe → 422, lundi sur une messe du dimanche → 422, sans
+  offrande → 422, tarif 0 sans offrande → 201, église sans messe → 422. Aussi vérifié :
+  `/schedules/nearby?nearestIfEmpty=true` depuis Paris renvoie les messes de Cotonou.
+  ⚠️ Avant déploiement : toute paroisse sans horaire « Messe… » ne peut plus recevoir
+  d'intention.
+
 ### 2026-10-19 — `/schedules/nearby?nearestIfEmpty=true` : repli sur les églises les plus proches
 - **Décision** (demandé, accueil du portail) : avec `radiusKm`, si aucune célébration dans le
   rayon, `nearestIfEmpty=true` renvoie celles des 30 églises géolocalisées les plus proches

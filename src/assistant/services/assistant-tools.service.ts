@@ -24,6 +24,7 @@ import { ScheduleFrequency } from '../../liturgy/liturgy.enum';
 import {
   earliestRequestLocal,
   formatLeadTime,
+  isMassTypeName,
   isValidScheduleOccurrence,
   respectsLeadTime,
 } from '../../liturgy/liturgy.util';
@@ -452,9 +453,12 @@ export class AssistantToolsService {
       order: { time: 'ASC' },
     });
 
+    // Une intention de messe ne se demande que sur une messe (pas une confession).
+    const mustBeMass = !!type && (type.scope === RequestTypeScope.INTENTION || type.requiresScheduleMatch);
     const masses: { date: string; day: string; time: string; celebration?: string }[] = [];
     for (let day = start; day <= end; day = this.addDays(day, 1)) {
       for (const s of schedules) {
+        if (mustBeMass && !isMassTypeName(s.type?.name)) continue;
         if (!isValidScheduleOccurrence(s, day)) continue;
         if (!respectsLeadTime(day, s.time, leadHours)) continue;
         masses.push({
@@ -513,8 +517,14 @@ export class AssistantToolsService {
     const time = typeof args.time === 'string' ? args.time.trim().slice(0, 5) : '';
     let schedule: Schedule | undefined;
     if (time) {
-      const schedules = await this.scheduleRepo.find({ where: { churchId: church.id } });
-      schedule = schedules.find((s) => s.time?.slice(0, 5) === time && isValidScheduleOccurrence(s, date));
+      const schedules = await this.scheduleRepo.find({ where: { churchId: church.id }, relations: { type: true } });
+      const mustBeMass = found.scope === RequestTypeScope.INTENTION || found.requiresScheduleMatch;
+      schedule = schedules.find(
+        (s) =>
+          s.time?.slice(0, 5) === time &&
+          isValidScheduleOccurrence(s, date) &&
+          (!mustBeMass || isMassTypeName(s.type?.name)),
+      );
       if (!schedule) {
         return { error: `Aucune messe le ${date} à ${time} dans cette paroisse : propose une messe retournée par get_upcoming_masses.` };
       }

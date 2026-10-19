@@ -15,6 +15,7 @@ import {
   Param,
   Patch,
   Post,
+  ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
@@ -51,6 +52,28 @@ export class ScheduleController {
   @ApiOperation({ summary: '[Admin] Liste complète des horaires (toutes églises)' })
   listAdmin() {
     return this.scheduleService.listAdmin();
+  }
+
+  /**
+   * GET /schedules/mass-slots?churchId=&leadHours=&days= — messes datées à
+   * venir d'une église, pour le formulaire de demande. ⚠️ Déclarée AVANT `:id`.
+   */
+  @Get('mass-slots')
+  @Public()
+  @ApiOperation({ summary: "Messes datées à venir d'une église (formulaire de demande)" })
+  @ApiQuery({ name: 'churchId', required: true, type: String })
+  @ApiQuery({ name: 'leadHours', required: false, type: Number })
+  @ApiQuery({ name: 'days', required: false, type: Number })
+  massSlots(
+    @Query('churchId', ParseUUIDPipe) churchId: string,
+    @Query('leadHours') leadHours?: string,
+    @Query('days') days?: string,
+  ) {
+    return this.scheduleService.massSlots(
+      churchId,
+      Math.max(0, Number(leadHours) || 0),
+      Number(days) || undefined,
+    );
   }
 
   /**

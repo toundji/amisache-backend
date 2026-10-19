@@ -138,6 +138,16 @@ export interface ListNearbyScheduleQuery {
   nearestIfEmpty?: boolean | string;
 }
 
+/** Réponse de GET /schedules/mass-slots — une messe datée proposable à une demande. */
+export interface MassSlot {
+  scheduleId: string;
+  /** YYYY-MM-DD */
+  date: string;
+  /** HH:mm, heure locale de l'église */
+  time: string;
+  typeName?: string;
+}
+
 /** Réponse de GET /schedules/nearby — une occurrence à venir, toutes églises confondues. */
 export interface NearbySchedule {
   scheduleId: string;

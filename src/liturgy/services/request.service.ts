@@ -17,6 +17,7 @@ import { RequestTypeService } from './request-type.service';
 import { RequestType } from '../entities/request-type.entity';
 import { PaymentService } from '../../payment/services/payment.service';
 import { TariffService } from './tariff.service';
+import { RequestTypeScope } from '../request-type.enum';
 import { ApiError, ApiErrorNotFoundById } from '../../utils/api-error';
 import { ApiFsUtils } from '../../utils/api-fs';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
@@ -144,15 +145,22 @@ export class RequestService {
       throw new ApiError(`« ${type.name} » n'accepte pas de pièce jointe.`);
     }
 
-    // La date doit correspondre à une messe déjà programmée par cette
-    // paroisse — seulement si le type l'exige ET que la paroisse a
-    // effectivement publié un horaire (sinon la date reste libre).
-    if (type.requiresScheduleMatch) {
-      const schedules = await this.scheduleService.list({ churchId: body.churchId });
-      if (schedules.length > 0 && !schedules.some((s) => isValidScheduleOccurrence(s, body.date))) {
+    // Intention de messe (ou type marqué « doit correspondre à une messe ») :
+    // date ET heure choisies parmi les messes publiées par cette paroisse —
+    // pas de messe le mardi, pas de demande pour un mardi. Sans programme
+    // de messes publié, la paroisse ne peut pas encore recevoir de demande.
+    if (type.scope === RequestTypeScope.INTENTION || type.requiresScheduleMatch) {
+      const masses = await this.scheduleService.listMassesForChurch(body.churchId);
+      if (masses.length === 0) {
         throw new ApiError(
-          'La date choisie ne correspond à aucune messe déjà programmée par cette paroisse — merci de choisir une date de son horaire publié.',
+          "Cette paroisse n'a pas encore publié son programme de messes — impossible d'y demander une messe pour l'instant.",
         );
+      }
+      if (!body.scheduleId) {
+        throw new ApiError('Choisissez une messe du programme de la paroisse (jour et heure).');
+      }
+      if (!masses.some((s) => s.id === body.scheduleId)) {
+        throw new ApiError("L'horaire choisi n'est pas une messe de cette paroisse.");
       }
     }
 
@@ -188,13 +196,16 @@ export class RequestService {
   async create(userId: string, body: CreateRequestDto): Promise<Request> {
     await this.validate(body);
 
+    // Offrande obligatoire, sauf si le tarif résolu (église ou ancêtre) est
+    // de 0 — demande gratuite. Le tarif prime toujours sur le montant envoyé
+    // par le client (TariffService.resolve) : il ne peut pas imposer son prix.
+    const tariff = await this.tariffService.resolve(body.churchId, body.typeId);
+    const isFree = tariff?.amount === 0;
     let paymentId: string | undefined;
-    if (body.payment) {
-      // Un tarif défini (par cette église, ou par repli hiérarchique — voir
-      // TariffService.resolve) prime toujours sur le montant envoyé par le
-      // client : ce dernier ne doit jamais pouvoir imposer son propre prix
-      // quand l'église en a publié un.
-      const tariff = await this.tariffService.resolve(body.churchId, body.typeId);
+    if (!isFree) {
+      if (!body.payment) {
+        throw new ApiError("L'offrande est obligatoire pour cette demande.");
+      }
       const payment = await this.paymentService.submit(
         tariff ? { ...body.payment, amount: tariff.amount } : body.payment,
         body.churchId,

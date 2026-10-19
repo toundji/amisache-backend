@@ -8,7 +8,13 @@ import { Repository } from 'typeorm';
 
 import { Schedule } from '../entities/schedule.entity';
 import { ScheduleFrequency } from '../liturgy.enum';
-import { nextScheduleOccurrence } from '../liturgy.util';
+import {
+  earliestRequestLocal,
+  isMassTypeName,
+  isValidScheduleOccurrence,
+  nextScheduleOccurrence,
+  respectsLeadTime,
+} from '../liturgy.util';
 import { ChurchService } from '../../church/services/church.service';
 import type { Church } from '../../church/entities/church.entity';
 import { ClergyMemberService } from '../../church/services/clergy-member.service';
@@ -20,6 +26,7 @@ import {
   CreateScheduleDto,
   ListNearbyScheduleQuery,
   ListScheduleQuery,
+  MassSlot,
   NearbySchedule,
   UpdateScheduleDto,
 } from '../dto/schedule.dto';
@@ -42,8 +49,36 @@ export class ScheduleService {
     }
     return this.scheduleRepo.find({
       where: { churchId: query.churchId },
+      relations: { type: true },
       order: { dayOfWeek: 'ASC', time: 'ASC' },
     });
+  }
+
+  /** Horaires de messe d'une église (type « Messe… »), avec leur type. */
+  async listMassesForChurch(churchId: string): Promise<Schedule[]> {
+    const schedules = await this.list({ churchId });
+    return schedules.filter((s) => isMassTypeName(s.type?.name));
+  }
+
+  /**
+   * Messes datées à venir d'une église (jour + heure), à partir du premier
+   * instant admis par le délai `leadHours` — ce que le formulaire de demande
+   * propose au fidèle. La validation finale reste `RequestService.validate`.
+   */
+  async massSlots(churchId: string, leadHours = 0, days = 60): Promise<MassSlot[]> {
+    const masses = await this.listMassesForChurch(churchId);
+    const span = Math.min(Math.max(1, days), 120);
+    const start = earliestRequestLocal(leadHours).slice(0, 10);
+    const slots: MassSlot[] = [];
+    const day = new Date(`${start}T00:00:00Z`);
+    for (let i = 0; i <= span; i++, day.setUTCDate(day.getUTCDate() + 1)) {
+      const date = day.toISOString().slice(0, 10);
+      for (const s of masses) {
+        if (!isValidScheduleOccurrence(s, date) || !respectsLeadTime(date, s.time, leadHours)) continue;
+        slots.push({ scheduleId: s.id, date, time: s.time.slice(0, 5), typeName: s.type?.name });
+      }
+    }
+    return slots.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
   }
 
   /** [Admin] Liste complète, toutes églises confondues. */
