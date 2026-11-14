@@ -58,6 +58,22 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-15 — Réglage « l'église reçoit des demandes en ligne »
+- **Décision** (demandé — « plutôt un réglage panel ») : nouvelle colonne
+  `Church.acceptsRequests` (`accepts_requests`, booléen, **vrai par défaut** : les églises
+  existantes gardent le comportement d'avant). Modifiable par l'admin
+  (`PATCH /churches/:id`) **et par le clergé actif de l'église** (`PATCH /churches/:id/info`,
+  `UpdateChurchInfoDto.acceptsRequests`). `RequestService.validate` refuse toute demande
+  vers une église qui l'a désactivé (« … ne reçoit pas de demandes en ligne pour le
+  moment ») — vaut pour le formulaire et l'assistant du chat (même `validate`). Les autres
+  conditions (messes publiées pour une intention, moyen de paiement sauf tarif 0) restent
+  vérifiées en plus.
+- **Conséquences** : migration `ChurchAcceptsRequests` (écrite à la main) **non
+  appliquée**. `tsc` propre ; non testé contre une base. Diagramme `.mermaid` mis à jour,
+  `.svg` non régénéré. À déployer avec le panel et le portail (même date) : migration →
+  backend → panel/portail.
+
+
 ### 2026-10-19 — Demande : messe du programme obligatoire, offrande obligatoire sauf tarif 0
 - **Décision** (demandé) :
   - `RequestService.validate` : pour un type `INTENTION` (ou `requiresScheduleMatch`), un

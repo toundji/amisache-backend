@@ -6,6 +6,7 @@ import { Type as TransformType } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  IsBoolean,
   IsEnum,
   IsHexColor,
   IsLatitude,
@@ -93,6 +94,10 @@ export class UpdateChurchDto {
   @MaxLength(10)
   defaultLanguage?: string;
 
+  @IsBoolean()
+  @IsOptional()
+  acceptsRequests?: boolean;
+
   @ValidateNested()
   @TransformType(() => AddressDto)
   @IsOptional()
@@ -101,7 +106,7 @@ export class UpdateChurchDto {
 
 /**
  * PATCH /churches/:id/info — sous-ensemble de UpdateChurchDto ouvert au
- * clergé actif de l'église (nom affiché + adresse). Slug, couleur, langue,
+ * clergé actif de l'église (nom affiché, adresse, réception des demandes). Slug, couleur, langue,
  * hiérarchie et statut restent réservés à l'administration.
  */
 export class UpdateChurchInfoDto {
@@ -115,6 +120,11 @@ export class UpdateChurchInfoDto {
   @TransformType(() => AddressDto)
   @IsOptional()
   address?: AddressDto;
+
+  /** Ouvrir ou fermer la réception des demandes en ligne. */
+  @IsBoolean()
+  @IsOptional()
+  acceptsRequests?: boolean;
 }
 
 export class UpdateChurchStatusDto {

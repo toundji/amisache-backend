@@ -132,19 +132,21 @@ export class ChurchController {
 
   /**
    * PATCH /churches/:id/info — admin/engineer, ou clergé ACTIF de cette
-   * église. Limité au nom et à l'adresse (UpdateChurchInfoDto) ; le reste de
+   * église. Limité au nom, à l'adresse et à la réception des demandes
+   * (UpdateChurchInfoDto) ; le reste de
    * la fiche passe par PATCH /:id (admin). Le champ-à-champ explicite évite
    * qu'un champ hors DTO ne fuie vers ChurchService.update.
    */
   @Patch(':id/info')
   @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Mettre à jour le nom et l'adresse (admin, ou clergé de cette église)" })
+  @ApiOperation({ summary: "Mettre à jour le nom, l'adresse et la réception des demandes (admin, ou clergé de cette église)" })
   async updateInfo(@GetUser() user: JwtUserInfo, @Param('id') id: string, @Body() body: UpdateChurchInfoDto) {
     await this.clergyMemberService.assertAuthorizedForChurch(user, id);
     const patch: UpdateChurchDto = {};
     if (body.name !== undefined) patch.name = body.name;
     if (body.address !== undefined) patch.address = body.address;
+    if (body.acceptsRequests !== undefined) patch.acceptsRequests = body.acceptsRequests;
     return this.churchService.update(id, patch);
   }
 

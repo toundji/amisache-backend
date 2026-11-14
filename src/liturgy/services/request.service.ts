@@ -128,7 +128,13 @@ export class RequestService {
       'churchId' | 'typeId' | 'date' | 'scheduleId' | 'homeAddress' | 'attachments'
     >,
   ): Promise<RequestType> {
-    await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
+    const church = await this.churchService.getById(body.churchId); // 404 propre si churchId invalide
+    // Réception des demandes fermée par le clergé de l'église (panel).
+    if (church.acceptsRequests === false) {
+      throw new ApiError(
+        `${church.name} ne reçoit pas de demandes en ligne pour le moment — merci de choisir une autre paroisse ou de la contacter directement.`,
+      );
+    }
     const type = await this.requestTypeService.getById(body.typeId); // 404 propre si typeId invalide
 
     // Célébration à domicile — seuls les types explicitement éligibles

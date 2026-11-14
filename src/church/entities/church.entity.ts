@@ -71,6 +71,14 @@ export class Church extends Audit {
   status!: ValidationStatus;
 
   /**
+   * L'église reçoit-elle des demandes (intentions, sacrements) en ligne ?
+   * Réglé par le clergé de l'église ou l'administration (panel). Vrai par
+   * défaut : les églises existantes gardent le comportement d'avant ce réglage.
+   */
+  @Column({ default: true, name: 'accepts_requests' })
+  acceptsRequests!: boolean;
+
+  /**
    * Emprise géographique (paroisse notamment). 4 à 20 sommets, ring
    * MySQL fermé — validé par ChurchService.setPerimeter, jamais par le
    * schéma. Absent tant qu'aucune emprise n'a été définie.
