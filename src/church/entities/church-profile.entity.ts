@@ -40,6 +40,15 @@ export class ChurchProfile extends Audit {
   @Column({ nullable: true, length: 500 })
   telegram?: string;
 
+  // Direct déclaré par le clergé (« Je diffuse en direct ») : l'église est « En direct » tant que
+  // liveUntil est dans le futur. liveUrl : lien du direct ; sinon les clients utilisent <chaîne YouTube>/live.
+
+  @Column({ type: 'datetime', nullable: true, name: 'live_until' })
+  liveUntil?: Date | null;
+
+  @Column({ nullable: true, length: 500, name: 'live_url' })
+  liveUrl?: string | null;
+
   // ─── Relation : Church (1—1) ─────────────────────────────────
   // ⚠️ churchId est en LECTURE SEULE — modifier via church: { id } as any
   // onDelete CASCADE : le profil n'a aucun sens sans l'église qui le porte

@@ -5,7 +5,7 @@
 // ============================================================
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 
 import { ChurchProfile } from '../entities/church-profile.entity';
 import { ChurchService } from './church.service';
@@ -27,6 +27,14 @@ export class ChurchProfileService {
     return this.churchProfileRepo.findOne({ where: { churchId } });
   }
 
+  /** GET /church-profiles/live — public : églises dont le direct (déclaré par le clergé) est en cours. */
+  async listLive(): Promise<Pick<ChurchProfile, 'churchId' | 'liveUntil' | 'liveUrl' | 'youtube'>[]> {
+    return this.churchProfileRepo.find({
+      where: { liveUntil: MoreThan(new Date()) },
+      select: { id: true, churchId: true, liveUntil: true, liveUrl: true, youtube: true },
+    });
+  }
+
   /**
    * PATCH /church-profiles/church/:churchId — admin/engineer, ou clergé ACTIF
    * de cette église. Crée le profil au premier appel, le met à jour ensuite.
@@ -40,11 +48,13 @@ export class ChurchProfileService {
     await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
 
     // Un lien envoyé vide = lien retiré (NULL) ; un champ absent reste inchangé.
-    const LIENS = ['website', 'youtube', 'facebook', 'whatsapp', 'telegram'] as const;
-    const donnees: Partial<ChurchProfile> = { ...body };
+    const LIENS = ['website', 'youtube', 'facebook', 'whatsapp', 'telegram', 'liveUrl'] as const;
+    const { liveUntil, ...reste } = body;
+    const donnees: Partial<ChurchProfile> = { ...reste };
     for (const cle of LIENS) {
       if (body[cle] === '') (donnees as Record<string, unknown>)[cle] = null;
     }
+    if (liveUntil !== undefined) donnees.liveUntil = liveUntil ? new Date(liveUntil) : null;
 
     const existing = await this.churchProfileRepo.findOne({ where: { churchId } });
     if (existing) {

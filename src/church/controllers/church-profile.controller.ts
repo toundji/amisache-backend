@@ -21,6 +21,14 @@ export class ChurchProfileController {
   constructor(private readonly churchProfileService: ChurchProfileService) {}
 
   /** GET /church-profiles/church/:churchId — public, `null` si rien publié. */
+  /** GET /church-profiles/live — églises en direct en ce moment (déclaré par leur clergé). */
+  @Get('live')
+  @Public()
+  @ApiOperation({ summary: 'Églises en direct en ce moment' })
+  listLive() {
+    return this.churchProfileService.listLive();
+  }
+
   @Get('church/:churchId')
   @Public()
   @ApiOperation({ summary: "Récupérer le contenu de présentation d'une église" })

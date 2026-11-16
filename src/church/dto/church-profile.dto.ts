@@ -3,7 +3,7 @@
 // DTO de la route PATCH /church-profiles/church/:churchId (upsert). Les liens (site, réseaux)
 // acceptent une chaîne vide pour être effacés — le service la convertit en NULL.
 // ============================================================
-import { IsOptional, IsString, IsUrl, MaxLength, ValidateIf } from 'class-validator';
+import { IsDateString, IsOptional, IsString, IsUrl, MaxLength, ValidateIf } from 'class-validator';
 
 export class UpsertChurchProfileDto {
   @IsString()
@@ -50,4 +50,17 @@ export class UpsertChurchProfileDto {
   @IsOptional()
   @MaxLength(500)
   telegram?: string;
+
+  /** Fin prévue du direct (ISO) ; null ou '' = direct arrêté. */
+  @ValidateIf((_, v) => v !== '' && v !== null)
+  @IsDateString({}, { message: 'Fin du direct invalide.' })
+  @IsOptional()
+  liveUntil?: string | null;
+
+  /** Lien du direct (facultatif) ; '' = retiré. */
+  @ValidateIf((_, v) => v !== '' && v !== null)
+  @IsUrl({ require_protocol: true }, { message: 'Lien du direct invalide.' })
+  @IsOptional()
+  @MaxLength(500)
+  liveUrl?: string | null;
 }
