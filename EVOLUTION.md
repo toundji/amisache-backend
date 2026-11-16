@@ -58,6 +58,16 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — Assistant vocal du clergé : `POST /assistant/clergy/:churchId`
+- **Décision** : `ClergyVoiceService` (assistant/) — le texte dicté par l'app + l'écran courant ; un seul appel
+  LLM (OpenRouter, modèles gratuits, 25 s) avec 3 outils **d'écran** (`ouvrir_ecran`, `filtrer_demandes`,
+  `repondre`) ; le serveur valide (écran dans la liste, dates AAAA-MM-JJ, heures `HH:MM:00`, type résolu par
+  son nom → `typeId`) et renvoie `{ dire, action }` que l'app exécute avec les droits du compte. Aucune
+  écriture. Prompt : 8 jours datés (fuseau Bénin), types de demande, heures des messes de la paroisse.
+  `@Roles(admin, engineer, clergy)` + `assertAuthorizedForChurch`. Sans `OPENROUTER_API_KEY` : 503.
+- **Conséquences** : `tsc` propre ; 5 phrases testées contre OpenRouter (bons jours, heures, type, PDF, refus
+  des modifications). Aucune migration. Non déployé à l'écriture.
+
 ### 2026-11-16 — Direct déclaré par le clergé, fil fidèle ⇄ paroisse, notification de suivi des demandes
 - **Direct** : `ChurchProfile.liveUntil` (datetime) + `liveUrl` (migration `1790400900000-ChurchProfileLive`) ;
   posés par le `PATCH` habituel du profil (`liveUntil` null/'' = arrêt). `GET /church-profiles/live` (public) :
