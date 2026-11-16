@@ -134,7 +134,13 @@ export class ClergyVoiceService {
     private readonly scheduleService: ScheduleService,
   ) {}
 
-  async interpreter(user: JwtUserInfo, churchId: string, texte: string, ecran?: string): Promise<ReponseVocale> {
+  async interpreter(
+    user: JwtUserInfo,
+    churchId: string,
+    texte: string,
+    ecran?: string,
+    historique: { role: 'user' | 'assistant'; texte: string }[] = [],
+  ): Promise<ReponseVocale> {
     await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
     const phrase = texte?.trim().slice(0, 500);
     if (!phrase) return { dire: "Je n'ai rien entendu. Réessayez.", action: null };
@@ -152,6 +158,8 @@ export class ClergyVoiceService {
       {
         messages: [
           { role: 'system', content: this.prompt(types.map((t) => t.name), heures, ecran) },
+          // Contexte : les derniers échanges (« et celles de 9 h 30 ? » reprend les critères précédents).
+          ...historique.slice(-5).map((m) => ({ role: m.role, content: m.texte.slice(0, 500) })),
           { role: 'user', content: phrase },
         ],
         tools: OUTILS,
@@ -228,6 +236,7 @@ export class ClergyVoiceService {
       "- numéro Mobile Money → numeros (« Ajouter un numéro ») ; ajouter un prêtre, un vicaire, une secrétaire → equipe (« Ajouter un membre » : e-mail de son compte Amisache, « Chercher », fonction, « Ajouter à l'équipe ») ; répondre à un fidèle → messages.",
       "- confirmer un paiement, traiter une demande → demandes (ouvrir la demande ; la confirmation d'un paiement se fait toujours en touchant le bouton) ; diffuser la messe en direct → aujourdhui (« Je suis en direct ») ou guide-direct pour apprendre.",
       "Ne cite que les boutons et champs nommés ci-dessus. Reprends exactement le jour et l'heure dits (18 h = 18:00), n'invente aucune valeur.",
+      "Les messages précédents sont le contexte : une suite (« et celles de 9 h 30 ? », « en PDF ») reprend les critères déjà donnés et ne change que ce qui est demandé. pdf=true seulement si le message ACTUEL demande un PDF / une impression.",
       'Phrase « dire » : une ou deux phrases courtes, vouvoiement, sans emoji.',
     ]
       .filter(Boolean)

@@ -4,12 +4,23 @@
 // ============================================================
 import { Body, Controller, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 
 import { GetUser, Roles } from '../../core/decorators/api.decorator';
 import { JwtUserInfo } from '../../auth/dto/auth.type.dto';
 import { UserRole } from '../../shared/common.enum';
 import { ClergyVoiceService } from '../services/clergy-voice.service';
+
+/** Un échange précédent (contexte : « et celles de 9 h 30 ? »). */
+export class MessageVocalDto {
+  @IsIn(['user', 'assistant'])
+  role!: 'user' | 'assistant';
+
+  @IsString()
+  @MaxLength(500)
+  texte!: string;
+}
 
 export class CommandeVocaleDto {
   @IsString()
@@ -21,6 +32,14 @@ export class CommandeVocaleDto {
   @IsString()
   @MaxLength(40)
   ecran?: string;
+
+  /** Les 5 derniers messages au plus (prêtre / assistant), du plus ancien au plus récent. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => MessageVocalDto)
+  historique?: MessageVocalDto[];
 }
 
 @ApiTags('Assistant — vocal clergé')
@@ -34,6 +53,6 @@ export class ClergyVoiceController {
   @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiOperation({ summary: "Interpréter une commande vocale du clergé (consulter / naviguer) — l'app exécute l'action renvoyée" })
   interpreter(@GetUser() user: JwtUserInfo, @Param('churchId') churchId: string, @Body() body: CommandeVocaleDto) {
-    return this.voice.interpreter(user, churchId, body.texte, body.ecran);
+    return this.voice.interpreter(user, churchId, body.texte, body.ecran, body.historique);
   }
 }

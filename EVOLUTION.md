@@ -58,6 +58,11 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — Assistant vocal : historique en contexte
+- **Décision** : `CommandeVocaleDto.historique` (≤ 5 messages `user`/`assistant`, 500 caractères chacun, validés)
+  inséré entre le prompt système et la phrase actuelle ; consigne : une suite reprend les critères précédents,
+  `pdf=true` seulement si le message actuel le demande. Toujours rien d'enregistré côté serveur.
+
 ### 2026-11-16 — Assistant vocal : mode « guide »
 - **Décision** : `ouvrir_ecran` gagne `section` (visuels/adresse/presentation de la fiche) et les écrans
   `nouvel-horaire`/`nouvelle-annonce` ; le prompt porte le plan de l'espace (où est chaque réglage, boutons
