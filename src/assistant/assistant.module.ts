@@ -20,6 +20,8 @@ import { OpenRouterClient } from './services/openrouter.client';
 import { LlmChatBotService } from './services/llm-chat-bot.service';
 import { AssistantToolsService } from './services/assistant-tools.service';
 import { AssistantNotifierService } from './services/assistant-notifier.service';
+import { ClergyVoiceService } from './services/clergy-voice.service';
+import { ClergyVoiceController } from './controllers/clergy-voice.controller';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { AssistantNotifierService } from './services/assistant-notifier.service'
     LlmChatBotService,
     AssistantToolsService,
     AssistantNotifierService,
+    ClergyVoiceService,
   ],
+  controllers: [ClergyVoiceController],
 })
 export class AssistantModule {}
