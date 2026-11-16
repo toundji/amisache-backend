@@ -72,7 +72,11 @@ Prochaines étapes ouvertes :
   participant humain actif (room `user:<id>`), pas seulement à la room de la conversation.
 - **Notification** : `RequestService.updateStatus` prévient le fidèle (in-app, `request.status`) — prise en
   charge, confirmée, célébrée, refusée. Best-effort.
-- **Conséquences** : `tsc` propre. Migration non jouée (déploiement). Non testé contre une base.
+- **Conséquences** : `tsc` propre. **Déployé le 16/11 en `v1.0.5`** : la `v1.0.4` a échoué avant toute migration
+  (`liveUrl?: string | null` sans `type` → `DataTypeNotSupportedError`, la prod est restée sur la version
+  précédente) ; corrigé par `type: 'varchar'`. Migration `ChurchProfileLive` jouée, pm2 en ligne ;
+  `GET /church-profiles/live` et `unreadCount` vérifiés en production.
+  ⚠️ Toute colonne `T | null` doit déclarer son `type` (la réflexion TypeScript donne `Object`).
 
 ### 2026-11-16 — L'affectation à une église donne le rôle `clergy`
 - **Constat** : `POST /clergy-members` créait l'affectation sans toucher aux rôles du compte ; or les écrans de
