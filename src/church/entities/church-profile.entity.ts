@@ -25,6 +25,21 @@ export class ChurchProfile extends Audit {
   @Column({ nullable: true, length: 500 })
   website?: string;
 
+  // Réseaux de l'église (liens complets, facultatifs) — boutons sur sa fiche publique.
+  // WhatsApp : lien wa.me ou de groupe/chaîne ; Telegram : lien t.me.
+
+  @Column({ nullable: true, length: 500 })
+  youtube?: string;
+
+  @Column({ nullable: true, length: 500 })
+  facebook?: string;
+
+  @Column({ nullable: true, length: 500 })
+  whatsapp?: string;
+
+  @Column({ nullable: true, length: 500 })
+  telegram?: string;
+
   // ─── Relation : Church (1—1) ─────────────────────────────────
   // ⚠️ churchId est en LECTURE SEULE — modifier via church: { id } as any
   // onDelete CASCADE : le profil n'a aucun sens sans l'église qui le porte

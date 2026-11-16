@@ -39,13 +39,20 @@ export class ChurchProfileService {
     await this.churchService.getById(churchId); // 404 propre si churchId invalide
     await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
 
+    // Un lien envoyé vide = lien retiré (NULL) ; un champ absent reste inchangé.
+    const LIENS = ['website', 'youtube', 'facebook', 'whatsapp', 'telegram'] as const;
+    const donnees: Partial<ChurchProfile> = { ...body };
+    for (const cle of LIENS) {
+      if (body[cle] === '') (donnees as Record<string, unknown>)[cle] = null;
+    }
+
     const existing = await this.churchProfileRepo.findOne({ where: { churchId } });
     if (existing) {
-      await this.churchProfileRepo.update(existing.id, body);
+      await this.churchProfileRepo.update(existing.id, donnees);
       return (await this.churchProfileRepo.findOne({ where: { id: existing.id } }))!;
     }
 
-    const profile = this.churchProfileRepo.create({ ...body, churchId });
+    const profile = this.churchProfileRepo.create({ ...donnees, churchId });
     return this.churchProfileRepo.save(profile);
   }
 }

@@ -58,6 +58,16 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — Réseaux de l'église sur la fiche (YouTube, Facebook, WhatsApp, Telegram)
+- **Décision** (demandé : « ajouter les liens YouTube, WhatsApp, Telegram et Facebook de l'église s'il y en a ») :
+  4 colonnes `youtube`, `facebook`, `whatsapp`, `telegram` sur `ChurchProfile` (`varchar(500)` NULL, comme
+  `website`), migration `1790400800000-ChurchProfileSocialLinks`. DTO : `@IsUrl({ require_protocol: true })`
+  précédé de `@ValidateIf((_, v) => v !== '')` — **`''` = lien retiré** (le service le stocke `null`), valable
+  aussi pour `website`. Les clients normalisent la saisie (numéro WhatsApp → `https://wa.me/229…`, `@canal` →
+  `https://t.me/…`, `@chaîne` → YouTube). `diagramme-classe-paroisses.mermaid` mis à jour (SVG non régénéré).
+- **Conséquences** : `tsc` propre. Migration **non jouée** (s'appliquera au déploiement). Rétrocompatible :
+  une ancienne API ignore ces champs (`forbidNonWhitelisted: false`).
+
 ### 2026-11-15 — Réglage « l'église reçoit des demandes en ligne »
 - **Décision** (demandé — « plutôt un réglage panel ») : nouvelle colonne
   `Church.acceptsRequests` (`accepts_requests`, booléen, **vrai par défaut** : les églises

@@ -1,9 +1,9 @@
 // ============================================================
 // AMISACHE — church-profile.dto.ts
-// DTO de la route PATCH /church-profiles/church/:churchId (upsert — un seul
-// champ éditable pour l'instant, extensible sans changer la forme de l'API).
+// DTO de la route PATCH /church-profiles/church/:churchId (upsert). Les liens (site, réseaux)
+// acceptent une chaîne vide pour être effacés — le service la convertit en NULL.
 // ============================================================
-import { IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsUrl, MaxLength, ValidateIf } from 'class-validator';
 
 export class UpsertChurchProfileDto {
   @IsString()
@@ -17,8 +17,37 @@ export class UpsertChurchProfileDto {
   leaderMessage?: string;
 
   /** Site web propre à l'église (certaines en ont déjà un) — affiché comme lien sur sa fiche publique. */
+  @ValidateIf((_, v) => v !== '')
   @IsUrl({ require_protocol: true })
   @IsOptional()
   @MaxLength(500)
   website?: string;
+
+  /** Chaîne YouTube de l'église (lien complet). */
+  @ValidateIf((_, v) => v !== '')
+  @IsUrl({ require_protocol: true }, { message: 'Lien YouTube invalide.' })
+  @IsOptional()
+  @MaxLength(500)
+  youtube?: string;
+
+  /** Page Facebook de l'église (lien complet). */
+  @ValidateIf((_, v) => v !== '')
+  @IsUrl({ require_protocol: true }, { message: 'Lien Facebook invalide.' })
+  @IsOptional()
+  @MaxLength(500)
+  facebook?: string;
+
+  /** WhatsApp : lien wa.me (numéro) ou lien de groupe / chaîne. */
+  @ValidateIf((_, v) => v !== '')
+  @IsUrl({ require_protocol: true }, { message: 'Lien WhatsApp invalide.' })
+  @IsOptional()
+  @MaxLength(500)
+  whatsapp?: string;
+
+  /** Telegram : lien t.me (canal, groupe ou compte). */
+  @ValidateIf((_, v) => v !== '')
+  @IsUrl({ require_protocol: true }, { message: 'Lien Telegram invalide.' })
+  @IsOptional()
+  @MaxLength(500)
+  telegram?: string;
 }
