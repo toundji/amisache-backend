@@ -11,6 +11,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChatModule } from '../chat/chat.module';
 import { ChurchModule } from '../church/church.module';
 import { LiturgyModule } from '../liturgy/liturgy.module';
+import { TypeModule } from '../type/type.module';
 import { ClergyMember } from '../church/entities/clergy-member.entity';
 import { Schedule } from '../liturgy/entities/schedule.entity';
 import { User } from '../users/entities/user.entity';
@@ -29,6 +30,7 @@ import { ClergyVoiceController } from './controllers/clergy-voice.controller';
     ChatModule,
     ChurchModule,
     LiturgyModule,
+    TypeModule, // célébrations et catégories d'annonce (assistant vocal)
   ],
   providers: [
     {
