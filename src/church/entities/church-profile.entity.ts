@@ -46,7 +46,7 @@ export class ChurchProfile extends Audit {
   @Column({ type: 'datetime', nullable: true, name: 'live_until' })
   liveUntil?: Date | null;
 
-  @Column({ nullable: true, length: 500, name: 'live_url' })
+  @Column({ type: 'varchar', nullable: true, length: 500, name: 'live_url' })
   liveUrl?: string | null;
 
   // ─── Relation : Church (1—1) ─────────────────────────────────
