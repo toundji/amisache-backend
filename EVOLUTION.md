@@ -66,7 +66,8 @@ Prochaines étapes ouvertes :
   écriture. Prompt : 8 jours datés (fuseau Bénin), types de demande, heures des messes de la paroisse.
   `@Roles(admin, engineer, clergy)` + `assertAuthorizedForChurch`. Sans `OPENROUTER_API_KEY` : 503.
 - **Conséquences** : `tsc` propre ; 5 phrases testées contre OpenRouter (bons jours, heures, type, PDF, refus
-  des modifications). Aucune migration. Non déployé à l'écriture.
+  des modifications). Aucune migration. **Déployé le 16/11 (`v1.0.6`)** ; vérifié en production depuis l'app
+  (« demandes à traiter de ce mois » → statut Soumise + novembre, 2,6 s).
 
 ### 2026-11-16 — Direct déclaré par le clergé, fil fidèle ⇄ paroisse, notification de suivi des demandes
 - **Direct** : `ChurchProfile.liveUntil` (datetime) + `liveUrl` (migration `1790400900000-ChurchProfileLive`) ;
