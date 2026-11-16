@@ -69,7 +69,9 @@ Prochaines étapes ouvertes :
   `AssistantModule` importe `TypeModule`.
 - **Conséquences** : `tsc` propre. Testé sur le vrai modèle : messe le mercredi à 18 h en fon ; « confirme la
   demande de Marie Houndé » (trouvée) ; « … de Jean » (2 → choix, « la première ») ; direct 1 h ; annonce de
-  kermesse ; « confirme le paiement » → écran des demandes + où toucher.
+  kermesse ; « confirme le paiement » → écran des demandes + où toucher. **Déployé le 17/11 en `v1.0.8`** (aucune
+  migration) ; vérifié en production : « je suis en direct pour une heure » → carte « Signaler la messe en direct
+  pour 1 h », annulée (rien d'enregistré).
 
 ### 2026-11-16 — Assistant vocal : transcriptions douteuses
 - **Décision** : `CommandeVocaleDto.alternatives` (≤ 3, autres transcriptions de la dictée, ajoutées au message) ;
