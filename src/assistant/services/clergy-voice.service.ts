@@ -52,6 +52,8 @@ export interface ReponseVocale {
   /** Phrase courte, lue à voix haute et affichée. */
   dire: string;
   action: ActionVocale | null;
+  /** « Vouliez-vous dire… ? » : commandes reformulées, à toucher (ou « oui » pour la première). */
+  choix?: string[];
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -111,6 +113,26 @@ const OUTILS = [
   {
     type: 'function',
     function: {
+      name: 'proposer',
+      description:
+        "Quand la phrase entendue est douteuse (mot mal transcrit) et que plusieurs sens sont possibles : demander « Vouliez-vous dire… ? » avec 2 ou 3 commandes reformulées, claires et complètes.",
+      parameters: {
+        type: 'object',
+        properties: {
+          dire: { type: 'string', description: 'La question, ex. « Vouliez-vous dire : les demandes à jour de ce mois ? »' },
+          choix: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'De 1 à 3 commandes complètes reformulées, la plus probable en premier.',
+          },
+        },
+        required: ['dire', 'choix'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'repondre',
       description:
         "Répondre sans action : seulement pour demander une précision, ou pour une question sans écran correspondant.",
@@ -140,6 +162,7 @@ export class ClergyVoiceService {
     texte: string,
     ecran?: string,
     historique: { role: 'user' | 'assistant'; texte: string }[] = [],
+    alternatives: string[] = [],
   ): Promise<ReponseVocale> {
     await this.clergyMemberService.assertAuthorizedForChurch(user, churchId);
     const phrase = texte?.trim().slice(0, 500);
@@ -160,7 +183,13 @@ export class ClergyVoiceService {
           { role: 'system', content: this.prompt(types.map((t) => t.name), heures, ecran) },
           // Contexte : les derniers échanges (« et celles de 9 h 30 ? » reprend les critères précédents).
           ...historique.slice(-5).map((m) => ({ role: m.role, content: m.texte.slice(0, 500) })),
-          { role: 'user', content: phrase },
+          {
+            role: 'user',
+            content: alternatives.filter((a) => a && a.trim() !== phrase).length
+              ? `${phrase}
+(Autres transcriptions possibles : ${alternatives.filter((a) => a && a.trim() !== phrase).map((a) => `« ${a.trim().slice(0, 200)} »`).join(' ; ')})`
+              : phrase,
+          },
         ],
         tools: OUTILS,
       },
@@ -206,6 +235,12 @@ export class ClergyVoiceService {
           },
         };
       }
+      case 'proposer': {
+        const choix = Array.isArray(args.choix)
+          ? args.choix.filter((c): c is string => typeof c === 'string' && !!c.trim()).map((c) => sansCodes(c).slice(0, 200)).filter(Boolean).slice(0, 3)
+          : [];
+        return choix.length ? { dire, action: null, choix } : { dire, action: null };
+      }
       default:
         return { dire, action: null };
     }
@@ -236,12 +271,25 @@ export class ClergyVoiceService {
       "- numéro Mobile Money → numeros (« Ajouter un numéro ») ; ajouter un prêtre, un vicaire, une secrétaire → equipe (« Ajouter un membre » : e-mail de son compte Amisache, « Chercher », fonction, « Ajouter à l'équipe ») ; répondre à un fidèle → messages.",
       "- confirmer un paiement, traiter une demande → demandes (ouvrir la demande ; la confirmation d'un paiement se fait toujours en touchant le bouton) ; diffuser la messe en direct → aujourdhui (« Je suis en direct ») ou guide-direct pour apprendre.",
       "Ne cite que les boutons et champs nommés ci-dessus. Reprends exactement le jour et l'heure dits (18 h = 18:00), n'invente aucune valeur.",
+      "DICTÉE IMPARFAITE : le texte vient d'une reconnaissance vocale, souvent sur un accent béninois ; des mots peuvent être mal transcrits (ex. « ours » pour « à jour », « jours » ; « sept heures » / « cette heure » ; noms propres déformés). Comprends le sens le plus probable dans le contexte de cette app. Si le sens est clair malgré une faute, agis directement. Si c'est douteux, utilise proposer (2 ou 3 commandes reformulées, la plus probable en premier) au lieu de deviner.",
+      "Vocabulaire de l'app (un mot entendu qui ressemble à l'un d'eux est probablement celui-ci) : logo, couverture, photo, galerie, fiche, adresse, position, présentation, horaire, messe, confession, adoration, programme, annonce, vidéo, direct, intention, demande, sacrement, baptême, mariage, repos de l'âme, action de grâce, à traiter, à jour, en cours, confirmée, célébrée, refusée, Mobile Money, numéro, équipe, vicaire, curé, secrétaire, catéchiste, PDF. Ex. « loto » près de « fiche » = « logo » ; « lame » = « l'âme » ; « moi » après « ce » = « mois ».",
+      "Propositions (choix) : en français simple, comme le prêtre les dirait, sans aucun code technique (jamais SUBMITTED, IN_PROGRESS…).",
+      "Si le prêtre répond « oui », « c'est ça », « la première » après une proposition, exécute la commande correspondante (« la deuxième » = la 2e proposition).",
       "Les messages précédents sont le contexte : une suite (« et celles de 9 h 30 ? », « en PDF ») reprend les critères déjà donnés et ne change que ce qui est demandé. pdf=true seulement si le message ACTUEL demande un PDF / une impression.",
       'Phrase « dire » : une ou deux phrases courtes, vouvoiement, sans emoji.',
     ]
       .filter(Boolean)
       .join('\n');
   }
+}
+
+/** Retire les codes techniques qu'un modèle glisse parfois : « (statut SUBMITTED) », « IN_PROGRESS »… */
+function sansCodes(s: string): string {
+  return s
+    .replace(/\s*\([^)]*\b[A-Z][A-Z_]{3,}\b[^)]*\)/g, '')
+    .replace(/\b(SUBMITTED|IN_PROGRESS|CONFIRMED|COMPLETED|REJECTED)\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 function normaliser(s: string): string {

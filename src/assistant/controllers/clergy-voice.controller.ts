@@ -33,6 +33,14 @@ export class CommandeVocaleDto {
   @MaxLength(40)
   ecran?: string;
 
+  /** Autres transcriptions proposées par la dictée (accents, mots mal entendus), 3 au plus. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  alternatives?: string[];
+
   /** Les 5 derniers messages au plus (prêtre / assistant), du plus ancien au plus récent. */
   @IsOptional()
   @IsArray()
@@ -53,6 +61,6 @@ export class ClergyVoiceController {
   @Roles(UserRole.admin, UserRole.engineer, UserRole.clergy)
   @ApiOperation({ summary: "Interpréter une commande vocale du clergé (consulter / naviguer) — l'app exécute l'action renvoyée" })
   interpreter(@GetUser() user: JwtUserInfo, @Param('churchId') churchId: string, @Body() body: CommandeVocaleDto) {
-    return this.voice.interpreter(user, churchId, body.texte, body.ecran, body.historique);
+    return this.voice.interpreter(user, churchId, body.texte, body.ecran, body.historique, body.alternatives);
   }
 }

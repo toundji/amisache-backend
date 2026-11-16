@@ -58,6 +58,12 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — Assistant vocal : transcriptions douteuses
+- **Décision** : `CommandeVocaleDto.alternatives` (≤ 3, autres transcriptions de la dictée, ajoutées au message) ;
+  outil `proposer` → `{ dire, action: null, choix }` ; prompt : dictée imparfaite (accent béninois), vocabulaire
+  de l'app pour corriger (« loto » → logo, « lame » → l'âme…), proposer plutôt que deviner, « oui » / « la
+  deuxième » après une proposition. `sansCodes` retire les codes techniques (SUBMITTED…) des propositions.
+
 ### 2026-11-16 — Assistant vocal : historique en contexte
 - **Décision** : `CommandeVocaleDto.historique` (≤ 5 messages `user`/`assistant`, 500 caractères chacun, validés)
   inséré entre le prompt système et la phrase actuelle ; consigne : une suite reprend les critères précédents,
