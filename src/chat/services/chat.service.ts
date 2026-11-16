@@ -50,6 +50,12 @@ const GUEST_SUBJECT_TYPE = 'guest-widget';
  * (widget du portail) — une seule par utilisateur, `subjectId` = son userId.
  */
 export const BOT_WIDGET_SUBJECT_TYPE = 'bot-widget';
+/**
+ * Fil fidèle ⇄ paroisse : `subjectId` = `<churchId>:<userId>`. Ouvert uniquement par un module métier
+ * (`church/` — ChurchChatService) via `openSubjectThread`, jamais par `POST /chat/conversations`
+ * (sinon un `subjectId` deviné ferait entrer dans le fil d'un autre fidèle).
+ */
+export const CHURCH_FAITHFUL_SUBJECT_TYPE = 'church-faithful';
 
 /** Messages système diffusés au fidèle lors d'un changement de mode */
 const HANDOFF_MESSAGE = "Un membre de l'équipe a pris le relais et vous répondra ici.";
@@ -108,7 +114,12 @@ export class ChatService {
     const payload = { conversation: this.toRealtimeSummary(conversation) };
     this.realtime.emitToConversation(conversationId, 'conversation:updated', payload);
     this.realtime.emitToAdmins('conversation:updated', payload);
-    for (const userId of extraUserIds) {
+    // Chaque participant humain actif, même hors de la room (liste des conversations ouverte, autre écran).
+    const humains = await this.participantRepo.find({
+      where: { conversationId, actorType: ActorType.HUMAN, leftAt: IsNull() },
+      select: { id: true, actorId: true },
+    });
+    for (const userId of new Set([...humains.map((h) => h.actorId), ...extraUserIds])) {
       this.realtime.emitToUser(userId, 'conversation:updated', payload);
     }
   }
@@ -142,7 +153,9 @@ export class ChatService {
       .skip((page - 1) * limit)
       .take(limit);
 
-    const [data, total] = await qb.getManyAndCount();
+    const [rows, total] = await qb.getManyAndCount();
+    const nonLus = await this.unreadCounts(rows.map((c) => c.id), actorId);
+    const data = rows.map((c) => Object.assign(c, { unreadCount: nonLus[c.id] ?? 0 }));
 
     return {
       data,
@@ -210,6 +223,13 @@ export class ChatService {
   ): Promise<Conversation> {
     await this.validateActor(initiator);
 
+    if (dto.subjectType === CHURCH_FAITHFUL_SUBJECT_TYPE) {
+      throw new ApiError("Ce fil s'ouvre depuis la fiche de la paroisse.", {
+        code: HttpStatus.FORBIDDEN,
+        displayable: true,
+      });
+    }
+
     const isBotWidget = dto.subjectType === BOT_WIDGET_SUBJECT_TYPE;
     if (isBotWidget) {
       // Une seule conversation assistant par utilisateur, qui ne peut ouvrir
@@ -276,6 +296,58 @@ export class ChatService {
     }
 
     return conversation;
+  }
+
+  /**
+   * Ouvre (ou reprend) le fil d'un sujet réservé à un module métier — sans les garde-fous de
+   * `createOrOpen`, c'est l'appelant qui a vérifié le droit d'ouvrir ce sujet. `owner` et `participants`
+   * sont (re)ajoutés s'ils n'y sont pas encore.
+   */
+  async openSubjectThread(
+    subjectType: string,
+    subjectId: string,
+    owner: Actor,
+    participants: { actor: Actor; role: ParticipantRole }[] = [],
+  ): Promise<Conversation> {
+    let conversation = await this.conversationRepo.findOne({ where: { subjectType, subjectId } });
+    if (!conversation) {
+      conversation = await this.conversationRepo.save(
+        this.conversationRepo.create({ subjectType, subjectId, mode: ConversationMode.AGENT }),
+      );
+    }
+    await this.ensureParticipant(conversation.id, owner, ParticipantRole.OWNER);
+    for (const p of participants) await this.ensureParticipant(conversation.id, p.actor, p.role);
+    return conversation;
+  }
+
+  /** Fils d'un type de sujet dont l'id commence par `prefix` (ex. tous les fils d'une paroisse). */
+  async listBySubjectPrefix(subjectType: string, prefix: string): Promise<Conversation[]> {
+    return this.conversationRepo
+      .createQueryBuilder('c')
+      .where('c.subjectType = :subjectType AND c.subjectId LIKE :prefix', { subjectType, prefix: `${prefix}%` })
+      .orderBy('c.lastMessageAt', 'DESC')
+      .getMany();
+  }
+
+  /** Non-lus de `actorId` pour plusieurs conversations en une requête (absent = 0). */
+  async unreadCounts(conversationIds: string[], actorId: string): Promise<Record<string, number>> {
+    if (!conversationIds.length) return {};
+    const rows: { conversationId: string; n: string }[] = await this.messageRepo
+      .createQueryBuilder('m')
+      .innerJoin(
+        Participant,
+        'p',
+        'p.conversation_id = m.conversation_id AND p.actor_id = :actorId AND p.left_at IS NULL',
+        { actorId },
+      )
+      .select('m.conversation_id', 'conversationId')
+      .addSelect('COUNT(*)', 'n')
+      .where('m.conversation_id IN (:...ids)', { ids: conversationIds })
+      .andWhere('(m.sender_id IS NULL OR m.sender_id <> :actorId)', { actorId })
+      .andWhere('(p.last_read_at IS NULL OR m.created_at > p.last_read_at)')
+      .groupBy('m.conversation_id')
+      .getRawMany();
+    return Object.fromEntries(rows.map((r) => [r.conversationId, Number(r.n)]));
   }
 
   /** Ajoute un participant s'il ne l'est pas déjà (ex. clergé destinataire d'une escalade). */

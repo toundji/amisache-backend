@@ -28,6 +28,8 @@ import {
   UpdateRequestStatusDto,
 } from '../dto/request.dto';
 
+import { NotificationService } from '../../notifications/services/notification.service';
+
 @Injectable()
 export class RequestService {
   constructor(
@@ -38,6 +40,7 @@ export class RequestService {
     private readonly requestTypeService: RequestTypeService,
     private readonly paymentService: PaymentService,
     private readonly tariffService: TariffService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async listMine(userId: string): Promise<Request[]> {
@@ -260,6 +263,32 @@ export class RequestService {
     const existing = await this.getById(id);
     await this.clergyMemberService.assertAuthorizedForChurch(user, existing.churchId);
     await this.requestRepo.update(id, { status: body.status as RequestStatus });
+    await this.notifierFidele(existing, body.status as RequestStatus);
     return { success: true };
+  }
+
+  /** Prévient le fidèle (notification in-app) du nouveau statut de sa demande. N'échoue jamais la mise à jour. */
+  private async notifierFidele(demande: Request, statut: RequestStatus): Promise<void> {
+    const messages: Partial<Record<RequestStatus, string>> = {
+      [RequestStatus.IN_PROGRESS]: 'est prise en charge par la paroisse.',
+      [RequestStatus.CONFIRMED]: 'est confirmée.',
+      [RequestStatus.COMPLETED]: 'a été célébrée.',
+      [RequestStatus.REJECTED]: "n'a pas pu être acceptée. Ouvrez-la pour en savoir plus.",
+    };
+    const fin = messages[statut];
+    if (!fin || !demande.userId) return;
+    const quoi = demande.type?.name ?? 'Votre demande';
+    try {
+      await this.notificationService.notify({
+        userId: demande.userId,
+        type: 'request.status',
+        title: demande.church?.name ?? 'Votre demande',
+        body: `${quoi} du ${String(demande.date).slice(0, 10).split('-').reverse().join('/')} ${fin}`,
+        data: { requestId: demande.id, status: statut },
+        dedupKey: `request-status:${demande.id}:${statut}`,
+      });
+    } catch {
+      // Notification best-effort : la demande est déjà à jour.
+    }
   }
 }

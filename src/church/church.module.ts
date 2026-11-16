@@ -28,13 +28,20 @@ import { ChurchProfileController } from './controllers/church-profile.controller
 import { AddressModule } from '../address/address.module';
 import { UsersModule } from '../users/users.module';
 
+import { ChatModule } from '../chat/chat.module';
+import { User } from '../users/entities/user.entity';
+import { ChurchChatController } from './controllers/church-chat.controller';
+import { ChurchChatService } from './services/church-chat.service';
+
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Church, Entrance, ClergyMember, Membership, ChurchProfile]),
+    TypeOrmModule.forFeature([Church, Entrance, ClergyMember, Membership, ChurchProfile, User]),
+    ChatModule, // fil fidèle ⇄ paroisse (church-chat) — church/ dépend de chat/, jamais l'inverse
     AddressModule,
     UsersModule,
   ],
   controllers: [
+    ChurchChatController,
     ChurchController,
     EntranceController,
     ClergyMemberController,
@@ -42,6 +49,7 @@ import { UsersModule } from '../users/users.module';
     ChurchProfileController,
   ],
   providers: [
+    ChurchChatService,
     ChurchService,
     EntranceService,
     ClergyMemberService,
