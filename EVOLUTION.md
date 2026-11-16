@@ -65,8 +65,9 @@ Prochaines étapes ouvertes :
   précédé de `@ValidateIf((_, v) => v !== '')` — **`''` = lien retiré** (le service le stocke `null`), valable
   aussi pour `website`. Les clients normalisent la saisie (numéro WhatsApp → `https://wa.me/229…`, `@canal` →
   `https://t.me/…`, `@chaîne` → YouTube). `diagramme-classe-paroisses.mermaid` mis à jour (SVG non régénéré).
-- **Conséquences** : `tsc` propre. Migration **non jouée** (s'appliquera au déploiement). Rétrocompatible :
-  une ancienne API ignore ces champs (`forbidNonWhitelisted: false`).
+- **Conséquences** : `tsc` propre. **Déployé en production le 16/11 (tag `v1.0.2`, avec `acceptsRequests`)** :
+  sauvegarde MySQL faite, migrations `ChurchAcceptsRequests` et `ChurchProfileSocialLinks` jouées, pm2 en
+  ligne ; `GET` du profil de la cathédrale renvoie bien les 4 champs (vides).
 
 ### 2026-11-15 — Réglage « l'église reçoit des demandes en ligne »
 - **Décision** (demandé — « plutôt un réglage panel ») : nouvelle colonne
