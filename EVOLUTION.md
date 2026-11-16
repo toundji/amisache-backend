@@ -58,6 +58,22 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — Direct déclaré par le clergé, fil fidèle ⇄ paroisse, notification de suivi des demandes
+- **Direct** : `ChurchProfile.liveUntil` (datetime) + `liveUrl` (migration `1790400900000-ChurchProfileLive`) ;
+  posés par le `PATCH` habituel du profil (`liveUntil` null/'' = arrêt). `GET /church-profiles/live` (public) :
+  églises dont le direct est en cours.
+- **Fil fidèle ⇄ paroisse** (AMISACHE.md §6.1, polymorphisme gardé) : sujet `church-faithful`, `subjectId`
+  `<churchId>:<userId>`. `church/` (`ChurchChatService`/`ChurchChatController`) dépend de `chat/` :
+  `POST /church-chat/:churchId` (le fidèle ouvre/reprend son fil, le clergé actif y est ajouté) ;
+  `GET /church-chat/:churchId/conversations` (clergé actif/admin : liste + l'appelant devient participant,
+  non-lus, fidèle). `POST /chat/conversations` refuse ce sujet (403) — sinon un `subjectId` deviné ouvrirait le
+  fil d'un autre. `ChatService` : `openSubjectThread`, `listBySubjectPrefix`, `unreadCounts` ;
+  `GET /chat/conversations` renvoie `unreadCount` par conversation ; `conversation:updated` part aussi à chaque
+  participant humain actif (room `user:<id>`), pas seulement à la room de la conversation.
+- **Notification** : `RequestService.updateStatus` prévient le fidèle (in-app, `request.status`) — prise en
+  charge, confirmée, célébrée, refusée. Best-effort.
+- **Conséquences** : `tsc` propre. Migration non jouée (déploiement). Non testé contre une base.
+
 ### 2026-11-16 — L'affectation à une église donne le rôle `clergy`
 - **Constat** : `POST /clergy-members` créait l'affectation sans toucher aux rôles du compte ; or les écrans de
   gestion exigent `@Roles(..., clergy)`. Une personne ajoutée par son curé voyait l'espace église mais chaque
