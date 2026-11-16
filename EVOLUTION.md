@@ -58,6 +58,12 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — Assistant vocal : mode « guide »
+- **Décision** : `ouvrir_ecran` gagne `section` (visuels/adresse/presentation de la fiche) et les écrans
+  `nouvel-horaire`/`nouvelle-annonce` ; le prompt porte le plan de l'espace (où est chaque réglage, boutons
+  réels) — une demande de modification ouvre le bon écran avec la consigne au lieu d'un refus ; `repondre`
+  réservé aux précisions. Interdiction d'inventer une valeur ou un bouton.
+
 ### 2026-11-16 — Assistant vocal du clergé : `POST /assistant/clergy/:churchId`
 - **Décision** : `ClergyVoiceService` (assistant/) — le texte dicté par l'app + l'écran courant ; un seul appel
   LLM (OpenRouter, modèles gratuits, 25 s) avec 3 outils **d'écran** (`ouvrir_ecran`, `filtrer_demandes`,

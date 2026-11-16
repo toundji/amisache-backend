@@ -27,11 +27,15 @@ export const ECRANS = [
   'plus',
   'guide-direct',
   'fiche-publique',
+  'nouvel-horaire',
+  'nouvelle-annonce',
 ] as const;
+/** Sections de la fiche (ancres de l'écran « fiche »). */
+const SECTIONS = ['visuels', 'adresse', 'presentation'] as const;
 const STATUTS = ['SUBMITTED', 'IN_PROGRESS', 'CONFIRMED', 'COMPLETED', 'REJECTED'] as const;
 
 export type ActionVocale =
-  | { nom: 'ouvrir_ecran'; ecran: (typeof ECRANS)[number] }
+  | { nom: 'ouvrir_ecran'; ecran: (typeof ECRANS)[number]; section?: (typeof SECTIONS)[number] }
   | {
       nom: 'filtrer_demandes';
       statut?: (typeof STATUTS)[number];
@@ -65,9 +69,17 @@ const OUTILS = [
             type: 'string',
             enum: [...ECRANS],
             description:
-              "aujourdhui=accueil de l'espace ; demandes=demandes reçues ; programme=horaires des célébrations ; annonces ; fiche=fiche de l'église (photos, adresse, présentation, réseaux) ; numeros=Mobile Money ; equipe=membres du clergé ; messages=messages des fidèles ; plus=menu ; guide-direct=comment diffuser la messe en direct ; fiche-publique=la fiche telle que la voient les fidèles",
+              "aujourdhui=accueil de l'espace (fiche à compléter, carte « Messe en direct ») ; demandes=demandes reçues ; programme=horaires des célébrations ; nouvel-horaire=formulaire d'ajout d'un horaire ; annonces ; nouvelle-annonce=formulaire d'annonce ; fiche=fiche de l'église ; numeros=Mobile Money ; equipe=membres du clergé ; messages=messages des fidèles ; plus=menu ; guide-direct=comment diffuser la messe en direct ; fiche-publique=la fiche telle que la voient les fidèles",
           },
-          dire: { type: 'string', description: 'Phrase très courte confirmant ce qui est ouvert.' },
+          section: {
+            type: 'string',
+            enum: [...SECTIONS],
+            description: "Seulement pour ecran=fiche : visuels (logo, photo de couverture, galerie), adresse (nom, commune, position GPS), presentation (texte, mot du curé, site web, YouTube/Facebook/WhatsApp/Telegram).",
+          },
+          dire: {
+            type: 'string',
+            description: "Une ou deux phrases courtes : ce qui est ouvert et, si on demande comment faire, quoi toucher.",
+          },
         },
         required: ['ecran', 'dire'],
       },
@@ -101,7 +113,7 @@ const OUTILS = [
     function: {
       name: 'repondre',
       description:
-        "Répondre sans action : demander une précision si la demande est ambiguë, ou dire poliment que ce n'est pas encore possible (modifier, publier, supprimer, confirmer un paiement : pas encore à la voix).",
+        "Répondre sans action : seulement pour demander une précision, ou pour une question sans écran correspondant.",
       parameters: {
         type: 'object',
         properties: { dire: { type: 'string' } },
@@ -160,7 +172,9 @@ export class ClergyVoiceService {
     switch (appel.function.name) {
       case 'ouvrir_ecran': {
         const e = ECRANS.find((x) => x === args.ecran);
-        return e ? { dire, action: { nom: 'ouvrir_ecran', ecran: e } } : { dire: "Je ne connais pas cet écran.", action: null };
+        if (!e) return { dire: 'Je ne connais pas cet écran.', action: null };
+        const section = e === 'fiche' ? SECTIONS.find((x) => x === args.section) : undefined;
+        return { dire, action: { nom: 'ouvrir_ecran', ecran: e, ...(section ? { section } : {}) } };
       }
       case 'filtrer_demandes': {
         const nom = typeof args.type === 'string' ? normaliser(args.type) : null;
@@ -205,8 +219,16 @@ export class ClergyVoiceService {
       `Heures des messes de la paroisse : ${heures.join(', ') || 'aucune publiée'}. « 7 h », « sept heures » = 07:00.`,
       ecran ? `Écran actuel : ${ecran}.` : '',
       "Intentions, messes demandées, demandes → filtrer_demandes. « À traiter », « nouvelles » → statut SUBMITTED. « Imprime », « PDF », « exporte » → pdf=true.",
-      'Si on te demande de modifier, publier, supprimer, ajouter ou confirmer un paiement : outil repondre, en disant que ce sera bientôt possible à la voix et en proposant d’ouvrir le bon écran.',
-      'Phrase « dire » : une seule, très courte, vouvoiement, sans emoji.',
+      "GUIDE — « comment… », « où… », « je veux… », ou toute demande d'ajout/modification : tu ne fais pas la modification toi-même (pas encore à la voix), tu OUVRES le bon écran avec ouvrir_ecran et tu dis quoi toucher. Plan de l'espace :",
+      "- logo → fiche, section visuels : « Touchez le rond Logo et choisissez une image carrée. » ; photo de l'église / couverture → visuels, « Changer la couverture » ; photos de la galerie → visuels, « Photos ».",
+      "- nom de l'église, adresse, commune, quartier, position sur la carte → fiche, section adresse (« Utiliser ma position » depuis le parvis, puis « Enregistrer l'adresse »).",
+      "- présentation, mot du curé, site web, liens YouTube/Facebook/WhatsApp/Telegram → fiche, section presentation, puis « Enregistrer la présentation ».",
+      '- ajouter une messe, un horaire, une confession, une adoration → nouvel-horaire (célébration, fréquence, jour, heure, puis « Enregistrer ») ; modifier ou supprimer un horaire → programme (toucher l’horaire).',
+      '- publier une annonce, mettre une vidéo de la messe → nouvelle-annonce (titre, texte, lien dans « Vidéo », puis « Publier ») ; modifier une annonce → annonces.',
+      "- numéro Mobile Money → numeros (« Ajouter un numéro ») ; ajouter un prêtre, un vicaire, une secrétaire → equipe (« Ajouter un membre » : e-mail de son compte Amisache, « Chercher », fonction, « Ajouter à l'équipe ») ; répondre à un fidèle → messages.",
+      "- confirmer un paiement, traiter une demande → demandes (ouvrir la demande ; la confirmation d'un paiement se fait toujours en touchant le bouton) ; diffuser la messe en direct → aujourdhui (« Je suis en direct ») ou guide-direct pour apprendre.",
+      "Ne cite que les boutons et champs nommés ci-dessus. Reprends exactement le jour et l'heure dits (18 h = 18:00), n'invente aucune valeur.",
+      'Phrase « dire » : une ou deux phrases courtes, vouvoiement, sans emoji.',
     ]
       .filter(Boolean)
       .join('\n');
