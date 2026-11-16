@@ -58,6 +58,19 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — Assistant vocal, étape 2 : modifier avec confirmation à l'écran
+- **Décision** : nouveaux outils `ajouter_horaire` (célébration résolue parmi les types `SCHEDULE`, fréquence,
+  jour `0=dimanche`, semaine du mois, date, heure, durée, langue), `changer_statut_demande` (le **serveur**
+  retrouve la demande dans `RequestService.listForChurch` par nom du fidèle / jour / heure / type, hors demandes
+  déjà dans ce statut, célébrées ou refusées : 1 → action, plusieurs → `choix`), `direct` (démarrer 30-240 min,
+  prolonger, arrêter), `rediger_annonce` (titre + texte mis au propre, catégorie `PUBLICATION`). Le serveur ne
+  fait que préparer et valider : `{ dire, action }` avec un `resume` ; l'app n'écrit qu'après confirmation.
+  Prompt : « dire » posé en question de confirmation ; jamais la confirmation d'un paiement à la voix.
+  `AssistantModule` importe `TypeModule`.
+- **Conséquences** : `tsc` propre. Testé sur le vrai modèle : messe le mercredi à 18 h en fon ; « confirme la
+  demande de Marie Houndé » (trouvée) ; « … de Jean » (2 → choix, « la première ») ; direct 1 h ; annonce de
+  kermesse ; « confirme le paiement » → écran des demandes + où toucher.
+
 ### 2026-11-16 — Assistant vocal : transcriptions douteuses
 - **Décision** : `CommandeVocaleDto.alternatives` (≤ 3, autres transcriptions de la dictée, ajoutées au message) ;
   outil `proposer` → `{ dire, action: null, choix }` ; prompt : dictée imparfaite (accent béninois), vocabulaire
