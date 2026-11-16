@@ -80,8 +80,10 @@ export class ClergyMemberService {
     await this.userService.getById(body.userId); // 404 propre si userId invalide
     await this.assertAuthorizedForChurch(user, body.churchId);
 
-    const member = this.clergyRepo.create(body);
-    return this.clergyRepo.save(member);
+    const member = await this.clergyRepo.save(this.clergyRepo.create(body));
+    // Sans le rôle `clergy`, les @Roles des écrans de gestion refuseraient la personne affectée.
+    await this.userService.ajouterRole(body.userId, UserRole.clergy);
+    return member;
   }
 
   async update(

@@ -187,6 +187,18 @@ export class UserService {
     return { success: true };
   }
 
+  /**
+   * Ajoute un rôle s'il manque (ex. `clergy` à l'affectation d'un compte à une église).
+   * Ne retire jamais rien. Le rôle compte dans le jeton à la prochaine connexion / au prochain rafraîchissement.
+   */
+  async ajouterRole(userId: string, role: UserRole): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: { id: true, roles: true } });
+    if (!user) throw new ApiErrorNotFoundById('users', userId);
+    const roles = user.roles ?? [UserRole.user];
+    if (roles.includes(role)) return;
+    await this.userRepo.update(userId, { roles: [...roles, role] });
+  }
+
   // ── Admin — mise à jour statut ────────────────────────────
 
   async updateStatus(

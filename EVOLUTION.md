@@ -58,6 +58,16 @@ Prochaines étapes ouvertes :
 
 ## Historique des décisions
 
+### 2026-11-16 — L'affectation à une église donne le rôle `clergy`
+- **Constat** : `POST /clergy-members` créait l'affectation sans toucher aux rôles du compte ; or les écrans de
+  gestion exigent `@Roles(..., clergy)`. Une personne ajoutée par son curé voyait l'espace église mais chaque
+  enregistrement était refusé tant qu'un admin ne lui donnait pas le rôle.
+- **Décision** : `ClergyMemberService.create` appelle `UserService.ajouterRole(userId, clergy)` (ajoute s'il
+  manque, ne retire jamais rien ; une fin de fonction ne retire pas le rôle — sans affectation active,
+  `assertAuthorizedForChurch` refuse de toute façon). Le rôle entre dans le jeton à la prochaine connexion.
+  Demandé pour l'écran « Équipe » de l'app (ajout d'un membre par son e-mail via `GET /users/lookup`).
+- **Conséquences** : `tsc` propre.
+
 ### 2026-11-16 — Réseaux de l'église sur la fiche (YouTube, Facebook, WhatsApp, Telegram)
 - **Décision** (demandé : « ajouter les liens YouTube, WhatsApp, Telegram et Facebook de l'église s'il y en a ») :
   4 colonnes `youtube`, `facebook`, `whatsapp`, `telegram` sur `ChurchProfile` (`varchar(500)` NULL, comme
