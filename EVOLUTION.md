@@ -63,6 +63,7 @@ Prochaines étapes ouvertes :
   outil `proposer` → `{ dire, action: null, choix }` ; prompt : dictée imparfaite (accent béninois), vocabulaire
   de l'app pour corriger (« loto » → logo, « lame » → l'âme…), proposer plutôt que deviner, « oui » / « la
   deuxième » après une proposition. `sansCodes` retire les codes techniques (SUBMITTED…) des propositions.
+- **Déployé le 16/11 en `v1.0.7`** avec le mode guide et l'historique (aucune migration).
 
 ### 2026-11-16 — Assistant vocal : historique en contexte
 - **Décision** : `CommandeVocaleDto.historique` (≤ 5 messages `user`/`assistant`, 500 caractères chacun, validés)
